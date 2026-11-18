@@ -17,7 +17,7 @@ export interface Room {
   id: string;
   name: string;
   description?: string;
-  mapId: string;
+  mapId?: string;
   visibility: RoomVisibility;
   maxParticipants: number;
   createdAt: number;
@@ -47,6 +47,7 @@ export interface ClientToServerEvents {
   ) => void;
 
   leave_room: (data: { roomId: string }) => void;
+  select_map: (data: { roomId: string; mapId: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -54,6 +55,7 @@ export interface ServerToClientEvents {
   user_joined: (data: { member: RoomMember; membersCount: number }) => void;
   user_left: (data: { memberId: string; memberName: string; membersCount: number }) => void;
   error_message: (message: string) => void;
+  select_map: (data: { mapId: string }) => void;
 }
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

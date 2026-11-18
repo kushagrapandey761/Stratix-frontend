@@ -1,7 +1,7 @@
 export interface IValorantMap {
   uuid: string;
   displayName: string;
-  splash: string;
+  displayIcon: string;
 }
 
 export interface IMapsResponse {

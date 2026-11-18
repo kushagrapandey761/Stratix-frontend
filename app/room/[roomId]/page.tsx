@@ -17,6 +17,9 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
+import { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
+import { fetchValorantMaps } from '@/lib/valorant-maps';
+import Image from 'next/image';
 
 export default function RoomPage() {
   const router = useRouter();
@@ -30,6 +33,19 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
+  const [mapData, setMapData] = useState<IValorantMap[]>([]);
+
+  useEffect(() => {
+    async function loadMaps() {
+      try {
+        const mapData = await fetchValorantMaps();
+        setMapData(mapData);
+      } catch (fetchError) {
+        setError(fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant maps');
+      }
+    }
+    loadMaps();
+  },[])
 
   useEffect(() => {
     if (!roomId) return;
@@ -91,6 +107,11 @@ export default function RoomPage() {
       addLog(`[-] ${data.memberName} disconnected from the room.`);
     };
 
+    const onMapSelected = (data: { mapId: string }) => {
+      setRoom((prev) => (prev ? { ...prev, mapId: data.mapId } : prev));
+      addLog(`[>] Map selected: ${data.mapId}`);
+    }
+
     const onErrorMessage = (msg: string) => {
       setError(msg);
       addLog(`[!] Error: ${msg}`);
@@ -105,6 +126,7 @@ export default function RoomPage() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('user_joined', onUserJoined);
+    socket.on('select_map', onMapSelected);
     socket.on('user_left', onUserLeft);
     socket.on('error_message', onErrorMessage);
 
@@ -119,6 +141,7 @@ export default function RoomPage() {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('user_joined', onUserJoined);
+      socket.off('select_map', onMapSelected);
       socket.off('user_left', onUserLeft);
       socket.off('error_message', onErrorMessage);
     };
@@ -137,6 +160,18 @@ export default function RoomPage() {
     socket.emit('leave_room', { roomId });
     router.push('/');
   };
+
+  const handleSelectMap = (mapId: string) => {
+    const socket = getSocket();
+    socket.emit('select_map', { roomId, mapId });
+    setRoom((prev) => (prev ? { ...prev, mapId } : prev));
+    addLog(`[>] Map selected: ${mapId}`);
+  };
+
+  function addLog(msg: string) {
+    const time = new Date().toLocaleTimeString();
+    setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
+  }
 
   if (error) {
     return (
@@ -251,60 +286,35 @@ export default function RoomPage() {
               backgroundSize: '40px 40px',
             }}
           />
-
-          <div className="max-w-xl w-full bg-[#141720] border border-[#292E3A] rounded-2xl p-8 relative z-10 space-y-6 shadow-tactical-card text-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#FF4655]/10 border border-[#FF4655]/30 flex items-center justify-center mx-auto text-[#FF4655]">
-              <Radio className="w-8 h-8 animate-pulse" />
+          {/* List of maps so that only leader can select */}
+          {room?.hostId === socketId && (
+            <div className="absolute top-6 left-6 bg-[#141720]/80 backdrop-blur-md border border-[#292E3A] rounded-lg p-4 w-64 z-10">
+              <div className="text-[10px] font-tactical text-[#FF4655] tracking-widest uppercase mb-2">
+                Map Selection
+              </div>
+              <div className="space-y-2.5 max-h-48 overflow-y-auto">
+                {['Ascent', 'Bind', 'Haven', 'Split', 'Icebox', 'Breeze', 'Fracture','Lotus','Sunset','Pearl','Abyss','Corrode'].map((mapName) => (
+                  <button
+                    key={mapName}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg border text-sm font-display font-bold transition-all ${
+                      room?.mapId === mapName
+                        ? 'bg-[#FF4655]/20 border-[#FF4655]/40 text-[#FF4655]'
+                        : 'bg-[#191D27] border-[#292E3A] text-white hover:border-[#FF4655]'
+                    }`}
+                    onClick={() => handleSelectMap(mapName.toLowerCase())}
+                  >
+                    {mapName}
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
 
+          {room?.mapId && (
             <div>
-              <div className="text-[11px] font-tactical text-[#FF4655] tracking-widest uppercase mb-1">
-                MULTIPLAYER SESSION ESTABLISHED
-              </div>
-              <h1 className="text-2xl md:text-3xl font-display font-black text-white uppercase tracking-wider">
-                {room?.name || `Room ${roomId}`}
-              </h1>
-              {room?.description && (
-                <p className="text-sm text-[#9298A5] mt-2 font-body max-w-md mx-auto">
-                  {room.description}
-                </p>
-              )}
+              <Image width={1000} height={1000} src={mapData.find((m) => m.displayName.toLowerCase() === room.mapId)?.displayIcon || ''} alt={room.mapId} />
             </div>
-
-            {/* Room Details Grid */}
-            <div className="grid grid-cols-3 gap-3 p-4 bg-[#0B0D12] rounded-xl border border-[#292E3A]">
-              {room?.mapId && (
-                <div>
-                  <div className="text-[10px] font-tactical text-[#9298A5] uppercase">Target Map</div>
-                  <div className="text-sm font-display font-bold text-white uppercase mt-0.5">
-                    {room.mapId}
-                  </div>
-                </div>
-              )}
-              <div>
-                <div className="text-[10px] font-tactical text-[#9298A5] uppercase">Visibility</div>
-                <div className="text-sm font-display font-bold text-[#00F0FF] uppercase mt-0.5">
-                  {room?.visibility || 'Private'}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] font-tactical text-[#9298A5] uppercase">Capacity</div>
-                <div className="text-sm font-display font-bold text-[#22C55E] uppercase mt-0.5">
-                  {room?.members.length || 1} / {room?.maxParticipants || 5}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 bg-[#191D27] border border-[#292E3A] rounded-lg text-xs font-tactical text-[#9298A5] flex items-center justify-between">
-              <span>Your Socket Client ID:</span>
-              <span className="text-white font-bold">{socketId || 'Syncing...'}</span>
-            </div>
-
-            <p className="text-xs text-[#9298A5]">
-              💡 Teammates can connect right now by opening this URL in another tab or entering code{' '}
-              <span className="text-[#FF4655] font-bold font-tactical">{roomId}</span> from the home page.
-            </p>
-          </div>
+          )}
         </div>
 
         {/* Right Sidebar: Active Roster & Live Logs */}
