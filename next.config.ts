@@ -7,6 +7,16 @@ const nextConfig: NextConfig = {
   },
   cacheComponents: true,
   partialPrefetching: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "media.valorant-api.com",
+        pathname: "/maps/**",
+        search: "",
+      },
+    ],
+  },
   turbopack: {
     rules: {
       "*.css": {
