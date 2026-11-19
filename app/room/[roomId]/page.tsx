@@ -1,16 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft,
   Check,
   Copy,
   Crown,
   LogOut,
   MapPin,
-  Radio,
   Shield,
   Users,
   Wifi,
@@ -19,7 +17,21 @@ import {
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
 import { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
 import { fetchValorantMaps } from '@/lib/valorant-maps';
+import { CallsignPrompt } from '@/components/room/callsign-prompt';
+import { RoomError } from '@/components/room/room-error';
 import Image from 'next/image';
+
+const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
+
+function subscribeToCallsign(callback: () => void) {
+  window.addEventListener(CALLSIGN_UPDATED_EVENT, callback);
+  return () => window.removeEventListener(CALLSIGN_UPDATED_EVENT, callback);
+}
+
+function getSavedCallsign() {
+  const savedName = sessionStorage.getItem('stratix_callsign')?.trim() || '';
+  return savedName.toLowerCase() === 'tacticaloperator' ? '' : savedName;
+}
 
 export default function RoomPage() {
   const router = useRouter();
@@ -34,6 +46,9 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
   const [mapData, setMapData] = useState<IValorantMap[]>([]);
+  const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
+  const [callsignInput, setCallsignInput] = useState('');
+  const [callsignError, setCallsignError] = useState('');
 
   useEffect(() => {
     async function loadMaps() {
@@ -48,14 +63,9 @@ export default function RoomPage() {
   },[])
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !userName) return;
 
     const socket = getSocket();
-
-    // Retrieve username from sessionStorage if user set one during join/create
-    const storedName =
-      (typeof window !== 'undefined' && sessionStorage.getItem('stratix_callsign')) ||
-      'TacticalOperator';
 
     const onConnect = () => {
       setIsConnected(true);
@@ -65,7 +75,7 @@ export default function RoomPage() {
       // Join the room upon connection
       socket.emit(
         'join_room',
-        { roomId, userName: storedName },
+        { roomId, userName },
         (res) => {
           if (res.success && res.room) {
             setRoom(res.room);
@@ -122,6 +132,17 @@ export default function RoomPage() {
       setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
     }
 
+    function onHostChanged(data: { newHostId: string }) {
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          hostId: data.newHostId,
+        };
+      });
+      addLog(`[>] Host changed to: ${room?.members.find((m) => m.id === data.newHostId)?.name || 'Unknown'}`);
+    }
+
     // Attach listeners
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -129,6 +150,7 @@ export default function RoomPage() {
     socket.on('select_map', onMapSelected);
     socket.on('user_left', onUserLeft);
     socket.on('error_message', onErrorMessage);
+    socket.on('host_changed', onHostChanged);
 
     // If socket is already connected when this component mounts, run join immediately
     if (socket.connected) {
@@ -144,8 +166,9 @@ export default function RoomPage() {
       socket.off('select_map', onMapSelected);
       socket.off('user_left', onUserLeft);
       socket.off('error_message', onErrorMessage);
+      socket.off('host_changed', onHostChanged);
     };
-  }, [roomId]);
+  }, [roomId, userName]);
 
   const handleCopyLink = () => {
     if (typeof window !== 'undefined') {
@@ -168,36 +191,47 @@ export default function RoomPage() {
     addLog(`[>] Map selected: ${mapId}`);
   };
 
+  const handleCallsignSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const callsign = callsignInput.trim();
+    if (!callsign) {
+      setCallsignError('Enter a callsign before joining the room.');
+      return;
+    }
+
+    sessionStorage.setItem('stratix_callsign', callsign);
+    window.dispatchEvent(new Event(CALLSIGN_UPDATED_EVENT));
+    setCallsignError('');
+  };
+
   function addLog(msg: string) {
     const time = new Date().toLocaleTimeString();
     setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
   }
 
   if (error) {
+    return <RoomError message={error} />;
+  }
+
+  if (userName === null) {
     return (
-      <div className="min-h-screen bg-[#0B0D12] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#141720] border border-[#FF4655]/40 rounded-xl p-8 text-center space-y-4 shadow-tactical-card">
-          <div className="w-12 h-12 rounded-full bg-[#FF4655]/10 border border-[#FF4655]/30 flex items-center justify-center mx-auto text-[#FF4655]">
-            <Radio className="w-6 h-6 animate-pulse" />
-          </div>
-          <div className="text-[10px] font-tactical text-[#FF4655] tracking-widest uppercase">
-            CONNECTION ABORTED
-          </div>
-          <h2 className="text-xl font-display font-black text-white uppercase tracking-wider">
-            Access Denied
-          </h2>
-          <p className="text-sm text-[#9298A5] font-body">{error}</p>
-          <div className="pt-4 flex gap-3 justify-center">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#191D27] border border-[#292E3A] text-xs font-display font-bold text-white hover:border-[#FF4655] transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Return to Base
-            </Link>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[#0B0D12] flex items-center justify-center p-4 text-sm font-tactical text-[#9298A5]">
+        VERIFYING CALLSIGN...
       </div>
+    );
+  }
+
+  if (!userName) {
+    return (
+      <CallsignPrompt
+        callsign={callsignInput}
+        error={callsignError}
+        onCallsignChange={(callsign) => {
+          setCallsignInput(callsign);
+          setCallsignError('');
+        }}
+        onSubmit={handleCallsignSubmit}
+      />
     );
   }
 
@@ -297,7 +331,7 @@ export default function RoomPage() {
                   <button
                     key={mapName}
                     className={`w-full text-left px-3 py-1.5 rounded-lg border text-sm font-display font-bold transition-all ${
-                      room?.mapId === mapName
+                      room?.mapId?.toLowerCase() === mapName.toLowerCase()
                         ? 'bg-[#FF4655]/20 border-[#FF4655]/40 text-[#FF4655]'
                         : 'bg-[#191D27] border-[#292E3A] text-white hover:border-[#FF4655]'
                     }`}

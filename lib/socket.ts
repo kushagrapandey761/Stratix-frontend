@@ -56,6 +56,7 @@ export interface ServerToClientEvents {
   user_left: (data: { memberId: string; memberName: string; membersCount: number }) => void;
   error_message: (message: string) => void;
   select_map: (data: { mapId: string }) => void;
+  host_changed: (data: { newHostId: string }) => void;
 }
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

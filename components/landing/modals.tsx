@@ -10,7 +10,7 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
   const router = useRouter();
   const [step, setStep] = useState<'form' | 'created'>('form');
   const [name, setName] = useState('');
-  const [userName, setUserName] = useState('ViperProtocol');
+  const [userName, setUserName] = useState('');
   const [desc, setDesc] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [maxPlayers, setMaxPlayers] = useState(5);
@@ -22,6 +22,11 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
   if (!open) return null;
 
   const handleCreate = () => {
+    if (!userName.trim()) {
+      setError('Please provide your callsign.');
+      return;
+    }
+
     if (!name.trim()) {
       setError('Please provide a tactical room name.');
       return;
@@ -44,11 +49,12 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
         description: desc.trim() || undefined,
         visibility,
         maxParticipants: maxPlayers,
-        userName: userName.trim() || 'Tactical Leader',
+        userName: userName.trim(),
       },
       (response) => {
         setIsLoading(false);
         if (response.success && response.room) {
+          sessionStorage.setItem('stratix_callsign', userName.trim());
           console.log('Room created successfully:', response.room);
           setCreatedRoom(response.room);
           setStep('created');
@@ -107,6 +113,7 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
                 Your Callsign / Name *
               </label>
               <input
+                required
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 placeholder="e.g. TenZ, ViperProtocol"
@@ -257,12 +264,17 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
 export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [code, setCode] = useState('');
-  const [userName, setUserName] = useState('TacticalOperator');
+  const [userName, setUserName] = useState('');
   const [error, setError] = useState('');
 
   if (!open) return null;
 
   const handleJoin = () => {
+    if (!userName.trim()) {
+      setError('Please enter your callsign.');
+      return;
+    }
+
     let cleanCode = code.trim().toUpperCase();
 
     // If a full URL was pasted (e.g. http://localhost:3000/room/STRAT-8K9P), extract just the code
@@ -277,7 +289,7 @@ export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () =>
 
     // Persist chosen username into sessionStorage so the room route can use it
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('stratix_callsign', userName.trim() || 'TacticalOperator');
+      sessionStorage.setItem('stratix_callsign', userName.trim());
     }
 
     setError('');
@@ -309,6 +321,7 @@ export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () =>
               Your Callsign
             </label>
             <input
+              required
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               placeholder="e.g. TenZ, OmenMain"
