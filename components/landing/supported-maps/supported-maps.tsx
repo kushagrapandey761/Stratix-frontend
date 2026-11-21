@@ -69,7 +69,7 @@ export function SupportedMaps() {
               <Image
                 width={400}
                 height={400}
-                src={map.splash}
+                src={map.splash || map.displayIcon}
                 alt={map.displayName}
                 className="w-full h-full object-cover opacity-50 group-hover:opacity-80 group-hover:scale-105 transition-all duration-300"
                 onError={(event) => {

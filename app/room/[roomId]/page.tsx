@@ -8,18 +8,16 @@ import {
   Copy,
   Crown,
   LogOut,
-  MapPin,
   Shield,
   Users,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
-import { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
-import { fetchValorantMaps } from '@/lib/valorant-maps';
 import { CallsignPrompt } from '@/components/room/callsign-prompt';
 import { RoomError } from '@/components/room/room-error';
-import Image from 'next/image';
+import { VALORANT_MAPS, ValorantMapData } from '@/constants/maps';
+import { CanvasWrapper } from '@/components/canvas/CanvasWrapper';
 
 const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
 
@@ -45,22 +43,14 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
-  const [mapData, setMapData] = useState<IValorantMap[]>([]);
   const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
   const [callsignInput, setCallsignInput] = useState('');
   const [callsignError, setCallsignError] = useState('');
 
-  useEffect(() => {
-    async function loadMaps() {
-      try {
-        const mapData = await fetchValorantMaps();
-        setMapData(mapData);
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant maps');
-      }
-    }
-    loadMaps();
-  },[])
+  // Selected map resolution
+  const activeMap: ValorantMapData =
+    VALORANT_MAPS.find((m) => m.id.toLowerCase() === room?.mapId?.toLowerCase()) ||
+    VALORANT_MAPS[0]; // Default to Ascent
 
   useEffect(() => {
     if (!roomId || !userName) return;
@@ -72,19 +62,14 @@ export default function RoomPage() {
       setSocketId(socket.id || '');
       addLog('Secure socket channel established with STRATIX command.');
 
-      // Join the room upon connection
-      socket.emit(
-        'join_room',
-        { roomId, userName },
-        (res) => {
-          if (res.success && res.room) {
-            setRoom(res.room);
-            addLog(`Successfully joined room [${res.room.id}] - ${res.room.name}`);
-          } else {
-            setError(res.error || 'Failed to connect to tactical room.');
-          }
+      socket.emit('join_room', { roomId, userName }, (res) => {
+        if (res.success && res.room) {
+          setRoom(res.room);
+          addLog(`Successfully joined room [${res.room.id}] - ${res.room.name}`);
+        } else {
+          setError(res.error || 'Failed to connect to tactical room.');
         }
-      );
+      });
     };
 
     const onDisconnect = () => {
@@ -95,7 +80,6 @@ export default function RoomPage() {
     const onUserJoined = (data: { member: RoomMember; membersCount: number }) => {
       setRoom((prev) => {
         if (!prev) return prev;
-        // Avoid duplicate members if re-sent
         const exists = prev.members.some((m) => m.id === data.member.id);
         if (exists) return prev;
         return {
@@ -104,6 +88,27 @@ export default function RoomPage() {
         };
       });
       addLog(`[+] ${data.member.name} entered the room.`);
+    };
+
+    const onMapSelected = (data: { mapId: string }) => {
+      setRoom((prev) => (prev ? { ...prev, mapId: data.mapId } : prev));
+      addLog(`[>] Map switched to: ${data.mapId.toUpperCase()}`);
+    };
+
+    const onHostChanged = (data: { newHostId: string }) => {
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              hostId: data.newHostId,
+              members: prev.members.map((m) => ({
+                ...m,
+                role: m.id === data.newHostId ? 'leader' : 'member',
+              })),
+            }
+          : prev
+      );
+      addLog(`[*] Tactical leadership transferred.`);
     };
 
     const onUserLeft = (data: { memberId: string; memberName: string; membersCount: number }) => {
@@ -117,31 +122,10 @@ export default function RoomPage() {
       addLog(`[-] ${data.memberName} disconnected from the room.`);
     };
 
-    const onMapSelected = (data: { mapId: string }) => {
-      setRoom((prev) => (prev ? { ...prev, mapId: data.mapId } : prev));
-      addLog(`[>] Map selected: ${data.mapId}`);
-    }
-
     const onErrorMessage = (msg: string) => {
       setError(msg);
       addLog(`[!] Error: ${msg}`);
     };
-
-    function addLog(msg: string) {
-      const time = new Date().toLocaleTimeString();
-      setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
-    }
-
-    function onHostChanged(data: { newHostId: string }) {
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          hostId: data.newHostId,
-        };
-      });
-      addLog(`[>] Host changed to: ${room?.members.find((m) => m.id === data.newHostId)?.name || 'Unknown'}`);
-    }
 
     // Attach listeners
     socket.on('connect', onConnect);
@@ -152,7 +136,6 @@ export default function RoomPage() {
     socket.on('error_message', onErrorMessage);
     socket.on('host_changed', onHostChanged);
 
-    // If socket is already connected when this component mounts, run join immediately
     if (socket.connected) {
       onConnect();
     } else {
@@ -184,11 +167,11 @@ export default function RoomPage() {
     router.push('/');
   };
 
-  const handleSelectMap = (mapId: string) => {
+  const handleSelectMap = (map: ValorantMapData) => {
     const socket = getSocket();
-    socket.emit('select_map', { roomId, mapId });
-    setRoom((prev) => (prev ? { ...prev, mapId } : prev));
-    addLog(`[>] Map selected: ${mapId}`);
+    socket.emit('select_map', { roomId, mapId: map.id });
+    setRoom((prev) => (prev ? { ...prev, mapId: map.id } : prev));
+    addLog(`[>] Map switched to: ${map.displayName.toUpperCase()}`);
   };
 
   const handleCallsignSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -236,9 +219,9 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0D12] text-[#F5F5F5] flex flex-col font-body">
+    <div className="h-screen w-screen bg-[#0B0D12] text-[#F5F5F5] flex flex-col font-body overflow-hidden">
       {/* Top Tactical Bar */}
-      <header className="h-16 border-b border-[#292E3A] bg-[#141720]/80 backdrop-blur-md px-6 flex items-center justify-between z-20">
+      <header className="h-14 border-b border-[#292E3A] bg-[#141720]/90 backdrop-blur-md px-5 flex items-center justify-between z-20 flex-shrink-0">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-7 h-7 rounded bg-[#FF4655] flex items-center justify-center text-white font-bold">
@@ -252,14 +235,12 @@ export default function RoomPage() {
           <div className="h-4 w-px bg-[#292E3A]" />
 
           <div className="flex items-center gap-3">
-            <span className="text-sm font-display font-bold text-white uppercase tracking-wide">
+            <span className="text-sm font-display font-bold text-white uppercase tracking-wide truncate max-w-[200px] sm:max-w-xs">
               {room?.name || 'INITIALIZING ROOM...'}
             </span>
-            {room?.mapId && (
-              <span className="text-[10px] font-tactical px-2 py-0.5 rounded bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] uppercase">
-                {room.mapId}
-              </span>
-            )}
+            <span className="text-[10px] font-tactical px-2 py-0.5 rounded bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] uppercase">
+              {activeMap.displayName}
+            </span>
           </div>
         </div>
 
@@ -300,7 +281,7 @@ export default function RoomPage() {
 
           <button
             onClick={handleLeave}
-            className="flex items-center gap-1.5 text-xs font-display font-bold px-3 py-1.5 rounded-lg bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] hover:bg-[#FF4655] hover:text-white transition-all"
+            className="flex items-center gap-1.5 text-xs font-display font-bold px-3 py-1.5 rounded-lg bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] hover:bg-[#FF4655] hover:text-white transition-all cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">LEAVE</span>
@@ -309,52 +290,19 @@ export default function RoomPage() {
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left / Center: Tactical Canvas Placeholder & Protocol Status */}
-        <div className="flex-1 flex flex-col p-6 items-center justify-center relative overflow-hidden bg-[#0B0D12]">
-          <div
-            className="absolute inset-0 opacity-[0.02]"
-            style={{
-              backgroundImage:
-                'linear-gradient(#FF4655 1px, transparent 1px), linear-gradient(90deg, #FF4655 1px, transparent 1px)',
-              backgroundSize: '40px 40px',
-            }}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Interactive Tactical Canvas Area */}
+        <main className="flex-1 relative h-full w-full overflow-hidden bg-[#0B0D12]">
+          <CanvasWrapper
+            currentMap={activeMap}
+            onSelectMap={handleSelectMap}
           />
-          {/* List of maps so that only leader can select */}
-          {room?.hostId === socketId && (
-            <div className="absolute top-6 left-6 bg-[#141720]/80 backdrop-blur-md border border-[#292E3A] rounded-lg p-4 w-64 z-10">
-              <div className="text-[10px] font-tactical text-[#FF4655] tracking-widest uppercase mb-2">
-                Map Selection
-              </div>
-              <div className="space-y-2.5 max-h-48 overflow-y-auto">
-                {['Ascent', 'Bind', 'Haven', 'Split', 'Icebox', 'Breeze', 'Fracture','Lotus','Sunset','Pearl','Abyss','Corrode'].map((mapName) => (
-                  <button
-                    key={mapName}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg border text-sm font-display font-bold transition-all ${
-                      room?.mapId?.toLowerCase() === mapName.toLowerCase()
-                        ? 'bg-[#FF4655]/20 border-[#FF4655]/40 text-[#FF4655]'
-                        : 'bg-[#191D27] border-[#292E3A] text-white hover:border-[#FF4655]'
-                    }`}
-                    onClick={() => handleSelectMap(mapName.toLowerCase())}
-                  >
-                    {mapName}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {room?.mapId && (
-            <div>
-              <Image width={1000} height={1000} src={mapData.find((m) => m.displayName.toLowerCase() === room.mapId)?.displayIcon || ''} alt={room.mapId} />
-            </div>
-          )}
-        </div>
+        </main>
 
         {/* Right Sidebar: Active Roster & Live Logs */}
-        <div className="w-80 border-l border-[#292E3A] bg-[#141720] flex flex-col z-10">
+        <aside className="w-72 border-l border-[#292E3A] bg-[#141720] flex flex-col z-20 flex-shrink-0">
           {/* Roster Header */}
-          <div className="p-4 border-b border-[#292E3A] flex items-center justify-between">
+          <div className="p-3.5 border-b border-[#292E3A] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-[#FF4655]" />
               <span className="text-xs font-display font-bold text-white uppercase tracking-wider">
@@ -367,7 +315,7 @@ export default function RoomPage() {
           </div>
 
           {/* Member List */}
-          <div className="p-4 space-y-2.5 overflow-y-auto flex-1">
+          <div className="p-3 space-y-2 overflow-y-auto flex-1">
             {room?.members.map((member) => {
               const isLeader = member.role === 'leader' || member.id === room.hostId;
               const isYou = member.id === socketId;
@@ -375,25 +323,25 @@ export default function RoomPage() {
               return (
                 <div
                   key={member.id}
-                  className="p-3 rounded-lg bg-[#191D27] border border-[#292E3A] flex items-center justify-between hover:border-[#3a3f4d] transition-all"
+                  className="p-2.5 rounded-lg bg-[#191D27] border border-[#292E3A] flex items-center justify-between hover:border-[#3a3f4d] transition-all"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center font-display font-black text-xs text-white shadow-sm"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center font-display font-black text-xs text-white shadow-sm flex-shrink-0"
                       style={{ backgroundColor: member.color }}
                     >
                       {member.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-display font-bold text-white">
+                        <span className="text-xs font-display font-bold text-white truncate max-w-[130px]">
                           {member.name}
                         </span>
                         {isYou && (
                           <span className="text-[9px] font-tactical text-[#00F0FF]">(YOU)</span>
                         )}
                       </div>
-                      <div className="text-[10px] font-tactical text-[#9298A5] flex items-center gap-1">
+                      <div className="text-[9px] font-tactical text-[#9298A5] flex items-center gap-1">
                         {isLeader ? (
                           <span className="text-[#FF4655] flex items-center gap-1 font-bold">
                             <Crown className="w-2.5 h-2.5" /> LEADER
@@ -406,7 +354,7 @@ export default function RoomPage() {
                   </div>
 
                   <div
-                    className="w-2 h-2 rounded-full"
+                    className="w-2 h-2 rounded-full flex-shrink-0"
                     style={{ backgroundColor: member.color }}
                   />
                 </div>
@@ -414,14 +362,41 @@ export default function RoomPage() {
             })}
           </div>
 
+          {/* Tactical Legend Box */}
+          <div className="p-3 border-t border-[#292E3A] bg-[#10141D] text-[10px] font-tactical space-y-1">
+            <div className="text-[#9298A5] uppercase tracking-wider mb-1 font-bold">
+              Color Protocol
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#FF4655]" />
+              <span>Red: Enemy / Execute</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#22C55E]" />
+              <span>Green: Push / Rotates</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
+              <span>Blue: Utility & Smokes</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#EAB308]" />
+              <span>Yellow: Hazard & Flash</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-[#A855F7]" />
+              <span>Purple: Fake & Alternate</span>
+            </div>
+          </div>
+
           {/* Activity / Sync Stream */}
-          <div className="border-t border-[#292E3A] p-4 bg-[#0B0D12]">
-            <div className="text-[10px] font-tactical text-[#9298A5] uppercase tracking-wider mb-2">
+          <div className="border-t border-[#292E3A] p-3 bg-[#0B0D12]">
+            <div className="text-[10px] font-tactical text-[#9298A5] uppercase tracking-wider mb-1.5">
               Tactical Event Log
             </div>
-            <div className="space-y-1.5 max-h-36 overflow-y-auto font-tactical text-[11px] text-[#9298A5]">
+            <div className="space-y-1 max-h-28 overflow-y-auto font-tactical text-[10px] text-[#9298A5]">
               {activityLogs.length === 0 ? (
-                <div className="text-[10px] text-[#4a5160]">No events recorded yet.</div>
+                <div className="text-[#4a5160]">No events recorded yet.</div>
               ) : (
                 activityLogs.map((log, i) => (
                   <div key={i} className="leading-tight text-slate-400">
@@ -431,7 +406,7 @@ export default function RoomPage() {
               )}
             </div>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );
