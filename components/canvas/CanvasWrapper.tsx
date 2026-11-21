@@ -25,6 +25,7 @@ interface CanvasWrapperProps {
   currentMap: ValorantMapData;
   onSelectMap: (map: ValorantMapData) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
+  roomId?: string;
 }
 
 export function CanvasWrapper(props: CanvasWrapperProps) {

@@ -48,6 +48,8 @@ export interface ClientToServerEvents {
 
   leave_room: (data: { roomId: string }) => void;
   select_map: (data: { roomId: string; mapId: string }) => void;
+  cursor_move: (data: { roomId: string; x: number; y: number }) => void;
+  cursor_leave: (data: { roomId: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -57,6 +59,8 @@ export interface ServerToClientEvents {
   error_message: (message: string) => void;
   select_map: (data: { mapId: string }) => void;
   host_changed: (data: { newHostId: string }) => void;
+  cursor_move: (data: { userId: string; userName: string; color: string; x: number; y: number }) => void;
+  cursor_leave: (data: { userId: string }) => void;
 }
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

@@ -26,11 +26,21 @@ import { CanvasToolbar } from './CanvasToolbar';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { CanvasControls } from './CanvasControls';
 import { BottomMapSelector } from './BottomMapSelector';
+import { RemoteCursor } from './RemoteCursor';
+import { getSocket } from '../../lib/socket';
 
 interface TacticalCanvasProps {
   currentMap: ValorantMapData;
   onSelectMap: (map: ValorantMapData) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
+  roomId?: string;
+}
+
+interface RemoteCursorData {
+  userName: string;
+  color: string;
+  x: number;
+  y: number;
 }
 
 const MAP_WIDTH = 1000;
@@ -40,13 +50,18 @@ export default function TacticalCanvas({
   currentMap,
   onSelectMap,
   onElementsChange,
+  roomId,
 }: TacticalCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const lastCursorEmit = useRef<number>(0);
 
   // Viewport dimensions
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
+
+  // Remote teammate cursors
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursorData>>({});
 
   // Tools & Styling
   const [currentTool, setCurrentTool] = useState<CanvasTool>('draw');
@@ -99,6 +114,49 @@ export default function TacticalCanvas({
       });
     }
   }, [dimensions, currentMap.id]);
+
+  // Listen for remote cursors from other teammates in the room
+  useEffect(() => {
+    if (!roomId) return;
+    const socket = getSocket();
+
+    const onCursorMove = (data: {
+      userId: string;
+      userName: string;
+      color: string;
+      x: number;
+      y: number;
+    }) => {
+      setRemoteCursors((prev) => ({
+        ...prev,
+        [data.userId]: {
+          userName: data.userName,
+          color: data.color,
+          x: data.x,
+          y: data.y,
+        },
+      }));
+    };
+
+    const onCursorLeave = (data: { userId: string }) => {
+      setRemoteCursors((prev) => {
+        const copy = { ...prev };
+        delete copy[data.userId];
+        return copy;
+      });
+    };
+
+    socket.on('cursor_move', onCursorMove);
+    socket.on('cursor_leave', onCursorLeave);
+
+    return () => {
+      socket.off('cursor_move', onCursorMove);
+      socket.off('cursor_leave', onCursorLeave);
+      if (roomId) {
+        socket.emit('cursor_leave', { roomId });
+      }
+    };
+  }, [roomId]);
 
   // Synchronize transformer when selection changes
   useEffect(() => {
@@ -340,8 +398,19 @@ export default function TacticalCanvas({
     }
   };
 
-  // Pointer Move (Drawing update or Pan update)
+  // Pointer Move (Drawing update or Pan update + Cursor broadcast)
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    // Broadcast cursor position to room (throttled to ~35ms / ~28fps)
+    if (roomId) {
+      const now = Date.now();
+      if (now - lastCursorEmit.current > 35) {
+        lastCursorEmit.current = now;
+        const pointerPos = getRelativePointerPosition();
+        const socket = getSocket();
+        socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
+      }
+    }
+
     if (isPanning) {
       const evt = e.evt as MouseEvent;
       setPosition({
@@ -366,6 +435,13 @@ export default function TacticalCanvas({
         ...line,
         points: [line.points[0], line.points[1], pos.x, pos.y],
       });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (roomId) {
+      const socket = getSocket();
+      socket.emit('cursor_leave', { roomId });
     }
   };
 
@@ -420,9 +496,10 @@ export default function TacticalCanvas({
   return (
     <div
       ref={containerRef}
+      onMouseLeave={handleMouseLeave}
       className={`relative w-full h-full bg-[#0B0D12] overflow-hidden select-none ${getCursorClass()}`}
     >
-      {/* ── Layer 0: GPU Synchronized Map Viewport (DOM Image) ── */}
+      {/* ── Layer 0: GPU Synchronized Map Viewport (DOM Image + Remote Cursors) ── */}
       <div
         className="absolute top-0 left-0 pointer-events-none origin-top-left transition-transform duration-75 ease-out"
         style={{
@@ -455,6 +532,17 @@ export default function TacticalCanvas({
             </span>
           </div>
         </div>
+
+        {/* Remote Teammate Cursors */}
+        {Object.entries(remoteCursors).map(([userId, cursor]) => (
+          <RemoteCursor
+            key={userId}
+            userName={cursor.userName}
+            color={cursor.color}
+            x={cursor.x}
+            y={cursor.y}
+          />
+        ))}
       </div>
 
       {/* ── Layer 1: Tactical Canvas Controls HUD ── */}
@@ -504,6 +592,7 @@ export default function TacticalCanvas({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onTouchStart={handleMouseDown}
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
