@@ -2,6 +2,8 @@
 
 import { io, Socket } from 'socket.io-client';
 
+import { CanvasElement } from '../types/canvas';
+
 export type RoomVisibility = 'public' | 'private';
 
 export interface RoomMember {
@@ -23,6 +25,7 @@ export interface Room {
   createdAt: number;
   hostId: string;
   members: RoomMember[];
+  elements?: CanvasElement[];
 }
 
 export interface ClientToServerEvents {
@@ -50,6 +53,13 @@ export interface ClientToServerEvents {
   select_map: (data: { roomId: string; mapId: string }) => void;
   cursor_move: (data: { roomId: string; x: number; y: number }) => void;
   cursor_leave: (data: { roomId: string }) => void;
+
+  // Real-time collaborative whiteboard events
+  drawing_live: (data: { roomId: string; element: CanvasElement | null }) => void;
+  element_commit: (data: { roomId: string; element: CanvasElement }) => void;
+  element_delete: (data: { roomId: string; elementId: string }) => void;
+  canvas_clear: (data: { roomId: string }) => void;
+  canvas_sync: (data: { roomId: string; elements: CanvasElement[] }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -61,6 +71,13 @@ export interface ServerToClientEvents {
   host_changed: (data: { newHostId: string }) => void;
   cursor_move: (data: { userId: string; userName: string; color: string; x: number; y: number }) => void;
   cursor_leave: (data: { userId: string }) => void;
+
+  // Real-time collaborative whiteboard events
+  drawing_live: (data: { userId: string; element: CanvasElement | null }) => void;
+  element_commit: (data: { userId: string; element: CanvasElement }) => void;
+  element_delete: (data: { elementId: string }) => void;
+  canvas_clear: () => void;
+  canvas_sync: (data: { elements: CanvasElement[] }) => void;
 }
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

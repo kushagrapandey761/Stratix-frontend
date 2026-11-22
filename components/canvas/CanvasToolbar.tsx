@@ -6,6 +6,7 @@ import {
   Pencil,
   Minus,
   MoveRight,
+  Circle as CircleIcon,
   MapPin,
   Type,
   Eraser,
@@ -53,6 +54,13 @@ const TOOLS: ToolDefinition[] = [
     hotkey: 'A',
     icon: MoveRight,
     description: 'Draw directional pushes and flanks',
+  },
+  {
+    id: 'circle',
+    label: 'Filled Circle',
+    hotkey: 'C',
+    icon: CircleIcon,
+    description: 'Draw filled tactical zones',
   },
   {
     id: 'ping',

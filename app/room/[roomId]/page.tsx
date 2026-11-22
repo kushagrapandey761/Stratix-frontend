@@ -296,6 +296,7 @@ export default function RoomPage() {
           <CanvasWrapper
             currentMap={activeMap}
             onSelectMap={handleSelectMap}
+            initialElements={room?.elements}
             roomId={roomId}
           />
         </main>

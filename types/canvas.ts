@@ -1,4 +1,4 @@
-export type CanvasTool = 'select' | 'draw' | 'line' | 'arrow' | 'ping' | 'text' | 'eraser';
+export type CanvasTool = 'select' | 'draw' | 'line' | 'arrow' | 'circle' | 'ping' | 'text' | 'eraser';
 
 export type TacticalColor =
   | '#FF4655' // Red - Enemy positions / execute
@@ -11,7 +11,7 @@ export type TacticalColor =
 
 export interface BaseElement {
   id: string;
-  type: 'draw' | 'line' | 'arrow' | 'ping' | 'text';
+  type: 'draw' | 'line' | 'arrow' | 'circle' | 'ping' | 'text';
   color: string;
   strokeWidth: number;
   opacity?: number;
@@ -34,6 +34,13 @@ export interface ArrowElement extends BaseElement {
   pointerWidth?: number;
 }
 
+export interface FilledCircleElement extends BaseElement {
+  type: 'circle';
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export interface PingElement extends BaseElement {
   type: 'ping';
   x: number;
@@ -50,7 +57,13 @@ export interface TextElement extends BaseElement {
   fontSize: number;
 }
 
-export type CanvasElement = DrawElement | LineElement | ArrowElement | PingElement | TextElement;
+export type CanvasElement =
+  | DrawElement
+  | LineElement
+  | ArrowElement
+  | FilledCircleElement
+  | PingElement
+  | TextElement;
 
 export interface ViewportTransform {
   scale: number;

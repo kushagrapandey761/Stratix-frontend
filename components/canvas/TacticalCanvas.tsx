@@ -18,6 +18,7 @@ import {
   DrawElement,
   LineElement,
   ArrowElement,
+  FilledCircleElement,
   PingElement,
   TextElement,
 } from '../../types/canvas';
@@ -33,6 +34,7 @@ interface TacticalCanvasProps {
   currentMap: ValorantMapData;
   onSelectMap: (map: ValorantMapData) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
+  initialElements?: CanvasElement[];
   roomId?: string;
 }
 
@@ -46,22 +48,33 @@ interface RemoteCursorData {
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 1000;
 
+function shouldBroadcastLiveUpdate(lastEmittedAt: { current: number }) {
+  const now = Date.now();
+  if (now - lastEmittedAt.current <= 35) return false;
+  lastEmittedAt.current = now;
+  return true;
+}
+
 export default function TacticalCanvas({
   currentMap,
   onSelectMap,
   onElementsChange,
+  initialElements,
   roomId,
 }: TacticalCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const lastCursorEmit = useRef<number>(0);
+  const lastDrawLiveEmit = useRef<number>(0);
+  const lastDragLiveEmit = useRef<number>(0);
 
   // Viewport dimensions
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
 
-  // Remote teammate cursors
+  // Remote teammate cursors & in-progress drawings
   const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursorData>>({});
+  const [remoteActiveElements, setRemoteActiveElements] = useState<Record<string, CanvasElement>>({});
 
   // Tools & Styling
   const [currentTool, setCurrentTool] = useState<CanvasTool>('draw');
@@ -98,6 +111,19 @@ export default function TacticalCanvas({
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  useEffect(() => {
+    if (!initialElements) return;
+    setElements(initialElements);
+    setHistory([initialElements]);
+    setHistoryStep(0);
+    setRemoteActiveElements({});
+  }, [initialElements]);
+
+  const broadcastElementCommit = (element: CanvasElement) => {
+    if (!roomId) return;
+    getSocket().emit('element_commit', { roomId, element });
+  };
 
   // Center the map in viewport initially and when map changes
   useEffect(() => {
@@ -144,14 +170,74 @@ export default function TacticalCanvas({
         delete copy[data.userId];
         return copy;
       });
+      // Also clear any in-progress drawing from this user
+      setRemoteActiveElements((prev) => {
+        const copy = { ...prev };
+        delete copy[data.userId];
+        return copy;
+      });
+    };
+
+    const onDrawingLive = (data: { userId: string; element: CanvasElement | null }) => {
+      setRemoteActiveElements((prev) => {
+        if (!data.element) {
+          const copy = { ...prev };
+          delete copy[data.userId];
+          return copy;
+        }
+        return {
+          ...prev,
+          [data.userId]: data.element,
+        };
+      });
+    };
+
+    const onElementCommit = (data: { userId: string; element: CanvasElement }) => {
+      setRemoteActiveElements((prev) => {
+        const copy = { ...prev };
+        delete copy[data.userId];
+        return copy;
+      });
+
+      setElements((prev) => {
+        const exists = prev.some((e) => e.id === data.element.id);
+        if (exists) {
+          return prev.map((e) => (e.id === data.element.id ? data.element : e));
+        }
+        return [...prev, data.element];
+      });
+    };
+
+    const onElementDelete = (data: { elementId: string }) => {
+      setElements((prev) => prev.filter((e) => e.id !== data.elementId));
+    };
+
+    const onCanvasClear = () => {
+      setElements([]);
+      setRemoteActiveElements({});
+    };
+
+    const onCanvasSync = (data: { elements: CanvasElement[] }) => {
+      setElements(data.elements);
+      setRemoteActiveElements({});
     };
 
     socket.on('cursor_move', onCursorMove);
     socket.on('cursor_leave', onCursorLeave);
+    socket.on('drawing_live', onDrawingLive);
+    socket.on('element_commit', onElementCommit);
+    socket.on('element_delete', onElementDelete);
+    socket.on('canvas_clear', onCanvasClear);
+    socket.on('canvas_sync', onCanvasSync);
 
     return () => {
       socket.off('cursor_move', onCursorMove);
       socket.off('cursor_leave', onCursorLeave);
+      socket.off('drawing_live', onDrawingLive);
+      socket.off('element_commit', onElementCommit);
+      socket.off('element_delete', onElementDelete);
+      socket.off('canvas_clear', onCanvasClear);
+      socket.off('canvas_sync', onCanvasSync);
       if (roomId) {
         socket.emit('cursor_leave', { roomId });
       }
@@ -189,27 +275,39 @@ export default function TacticalCanvas({
   const handleUndo = useCallback(() => {
     if (historyStep > 0) {
       const prevStep = historyStep - 1;
+      const nextElements = history[prevStep];
       setHistoryStep(prevStep);
-      setElements(history[prevStep]);
+      setElements(nextElements);
       setSelectedId(null);
-      onElementsChange?.(history[prevStep]);
+      onElementsChange?.(nextElements);
+      if (roomId) {
+        getSocket().emit('canvas_sync', { roomId, elements: nextElements });
+      }
     }
-  }, [history, historyStep, onElementsChange]);
+  }, [history, historyStep, onElementsChange, roomId]);
 
   const handleRedo = useCallback(() => {
     if (historyStep < history.length - 1) {
       const nextStep = historyStep + 1;
+      const nextElements = history[nextStep];
       setHistoryStep(nextStep);
-      setElements(history[nextStep]);
+      setElements(nextElements);
       setSelectedId(null);
-      onElementsChange?.(history[nextStep]);
+      onElementsChange?.(nextElements);
+      if (roomId) {
+        getSocket().emit('canvas_sync', { roomId, elements: nextElements });
+      }
     }
-  }, [history, historyStep, onElementsChange]);
+  }, [history, historyStep, onElementsChange, roomId]);
 
   const handleClear = useCallback(() => {
     commitElements([]);
     setSelectedId(null);
-  }, [commitElements]);
+    if (roomId) {
+      const socket = getSocket();
+      socket.emit('canvas_clear', { roomId });
+    }
+  }, [commitElements, roomId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -231,6 +329,8 @@ export default function TacticalCanvas({
         setCurrentTool('line');
       } else if (e.key === 'a' || e.key === 'A') {
         setCurrentTool('arrow');
+      } else if (e.key === 'c' || e.key === 'C') {
+        setCurrentTool('circle');
       } else if (e.key === 'p' || e.key === 'P') {
         setCurrentTool('ping');
       } else if (e.key === 't' || e.key === 'T') {
@@ -249,8 +349,13 @@ export default function TacticalCanvas({
         handleRedo();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault();
-        commitElements(elements.filter((el) => el.id !== selectedId));
+        const targetId = selectedId;
+        commitElements(elements.filter((el) => el.id !== targetId));
         setSelectedId(null);
+        if (roomId) {
+          const socket = getSocket();
+          socket.emit('element_delete', { roomId, elementId: targetId });
+        }
       }
     }
 
@@ -329,10 +434,13 @@ export default function TacticalCanvas({
     }
 
     if (currentTool === 'eraser') {
-      const clickedId = clickedTarget.id();
+      const clickedId = clickedTarget.id() || clickedTarget.getParent()?.id();
       if (clickedId) {
         commitElements(elements.filter((el) => el.id !== clickedId));
         if (selectedId === clickedId) setSelectedId(null);
+        if (roomId) {
+          getSocket().emit('element_delete', { roomId, elementId: clickedId });
+        }
       }
       return;
     }
@@ -368,6 +476,17 @@ export default function TacticalCanvas({
         pointerWidth: Math.max(10, strokeWidth * 2),
       };
       setActiveElement(newArrow);
+    } else if (currentTool === 'circle') {
+      const newCircle: FilledCircleElement = {
+        id: newId,
+        type: 'circle',
+        color: currentColor,
+        strokeWidth,
+        x: pos.x,
+        y: pos.y,
+        radius: 0,
+      };
+      setActiveElement(newCircle);
     } else if (currentTool === 'ping') {
       const pingLabel = prompt('Ping Callout (e.g. Spike, Enemy, Smoke):', '') || '';
       const newPing: PingElement = {
@@ -380,6 +499,7 @@ export default function TacticalCanvas({
         label: pingLabel.trim(),
       };
       commitElements([...elements, newPing]);
+      broadcastElementCommit(newPing);
     } else if (currentTool === 'text') {
       const content = prompt('Enter Tactical Callout Note:', '');
       if (content && content.trim()) {
@@ -394,6 +514,7 @@ export default function TacticalCanvas({
           fontSize: 16,
         };
         commitElements([...elements, newText]);
+        broadcastElementCommit(newText);
       }
     }
   };
@@ -422,19 +543,35 @@ export default function TacticalCanvas({
 
     if (!activeElement) return;
     const pos = getRelativePointerPosition();
+    let updatedElement: CanvasElement | null = null;
 
     if (activeElement.type === 'draw') {
       const draw = activeElement as DrawElement;
-      setActiveElement({
+      updatedElement = {
         ...draw,
         points: [...draw.points, pos.x, pos.y],
-      });
+      };
     } else if (activeElement.type === 'line' || activeElement.type === 'arrow') {
       const line = activeElement as LineElement | ArrowElement;
-      setActiveElement({
+      updatedElement = {
         ...line,
         points: [line.points[0], line.points[1], pos.x, pos.y],
-      });
+      };
+    } else if (activeElement.type === 'circle') {
+      const circle = activeElement as FilledCircleElement;
+      updatedElement = {
+        ...circle,
+        radius: Math.hypot(pos.x - circle.x, pos.y - circle.y),
+      };
+    }
+
+    if (updatedElement) {
+      setActiveElement(updatedElement);
+      const now = Date.now();
+      if (roomId && now - lastDrawLiveEmit.current > 35) {
+        lastDrawLiveEmit.current = now;
+        getSocket().emit('drawing_live', { roomId, element: updatedElement });
+      }
     }
   };
 
@@ -455,22 +592,52 @@ export default function TacticalCanvas({
     if (!activeElement) return;
     commitElements([...elements, activeElement]);
     setActiveElement(null);
+    broadcastElementCommit(activeElement);
   };
 
   // Element Drag End
+  const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    const { x, y } = e.target.position();
+    const element = elements.find((el) => el.id === id);
+    if (element && (element.type === 'ping' || element.type === 'text')) {
+      const updatedElement = { ...element, x, y };
+      if (roomId) {
+        const socket = getSocket();
+        if (shouldBroadcastLiveUpdate(lastCursorEmit)) {
+          const pointerPos = getRelativePointerPosition();
+          socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
+        }
+        if (shouldBroadcastLiveUpdate(lastDragLiveEmit)) {
+          socket.emit('drawing_live', { roomId, element: updatedElement });
+        }
+      }
+    }
+
+    setElements((prev) =>
+      prev.map((el) =>
+        el.id === id && (el.type === 'ping' || el.type === 'text')
+          ? { ...el, x, y }
+          : el
+      )
+    );
+  };
+
   const handleDragEnd = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    let updatedElement: CanvasElement | null = null;
     const updated = elements.map((el) => {
       if (el.id !== id) return el;
       if (el.type === 'ping' || el.type === 'text') {
-        return {
+        updatedElement = {
           ...el,
           x: e.target.x(),
           y: e.target.y(),
         };
+        return updatedElement;
       }
       return el;
     });
     commitElements(updated);
+    if (updatedElement) broadcastElementCommit(updatedElement);
   };
 
   // Cursor style
@@ -482,6 +649,7 @@ export default function TacticalCanvas({
       case 'draw':
       case 'line':
       case 'arrow':
+      case 'circle':
       case 'ping':
         return 'cursor-crosshair';
       case 'text':
@@ -599,6 +767,10 @@ export default function TacticalCanvas({
       >
         <Layer>
           {elements.map((el) => {
+            if (Object.values(remoteActiveElements).some((activeEl) => activeEl.id === el.id)) {
+              return null;
+            }
+
             const isSelected = selectedId === el.id;
 
             if (el.type === 'draw') {
@@ -674,6 +846,33 @@ export default function TacticalCanvas({
               );
             }
 
+            if (el.type === 'circle') {
+              const circle = el as FilledCircleElement;
+              return (
+                <Circle
+                  key={circle.id}
+                  id={circle.id}
+                  x={circle.x}
+                  y={circle.y}
+                  radius={circle.radius}
+                  fill={circle.color}
+                  fillOpacity={0.35}
+                  stroke={circle.color}
+                  strokeWidth={circle.strokeWidth}
+                  opacity={circle.opacity ?? 0.95}
+                  onClick={() => {
+                    if (currentTool === 'select') setSelectedId(circle.id);
+                    if (currentTool === 'eraser') {
+                      commitElements(elements.filter((item) => item.id !== circle.id));
+                    }
+                  }}
+                  shadowColor={isSelected ? '#FFFFFF' : circle.color}
+                  shadowBlur={isSelected ? 10 : 3}
+                  shadowOpacity={0.8}
+                />
+              );
+            }
+
             if (el.type === 'ping') {
               const ping = el as PingElement;
               return (
@@ -683,6 +882,7 @@ export default function TacticalCanvas({
                   x={ping.x}
                   y={ping.y}
                   draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(ping.id, e)}
                   onDragEnd={(e) => handleDragEnd(ping.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(ping.id);
@@ -719,6 +919,7 @@ export default function TacticalCanvas({
                   x={textEl.x}
                   y={textEl.y}
                   draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(textEl.id, e)}
                   onDragEnd={(e) => handleDragEnd(textEl.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(textEl.id);
@@ -739,6 +940,106 @@ export default function TacticalCanvas({
               );
             }
 
+            return null;
+          })}
+
+          {Object.entries(remoteActiveElements).map(([userId, el]) => {
+            if (el.type === 'draw') {
+              return (
+                <Line
+                  key={userId}
+                  points={el.points}
+                  stroke={el.color}
+                  strokeWidth={el.strokeWidth}
+                  tension={0.5}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={el.opacity ?? 0.9}
+                />
+              );
+            }
+            if (el.type === 'line') {
+              return (
+                <Line
+                  key={userId}
+                  points={el.points}
+                  stroke={el.color}
+                  strokeWidth={el.strokeWidth}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={el.opacity ?? 0.9}
+                />
+              );
+            }
+            if (el.type === 'arrow') {
+              return (
+                <Arrow
+                  key={userId}
+                  points={el.points}
+                  stroke={el.color}
+                  fill={el.color}
+                  strokeWidth={el.strokeWidth}
+                  pointerLength={el.pointerLength || 14}
+                  pointerWidth={el.pointerWidth || 12}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={el.opacity ?? 0.9}
+                />
+              );
+            }
+            if (el.type === 'circle') {
+              return (
+                <Circle
+                  key={userId}
+                  x={el.x}
+                  y={el.y}
+                  radius={el.radius}
+                  fill={el.color}
+                  fillOpacity={0.35}
+                  stroke={el.color}
+                  strokeWidth={el.strokeWidth}
+                  opacity={el.opacity ?? 0.9}
+                />
+              );
+            }
+            if (el.type === 'ping') {
+              return (
+                <Group key={userId} x={el.x} y={el.y}>
+                  <Circle radius={16} stroke={el.color} strokeWidth={1.5} opacity={0.4} />
+                  <Circle radius={10} stroke={el.color} strokeWidth={2} opacity={0.8} />
+                  <Circle radius={5} fill={el.color} shadowColor={el.color} shadowBlur={10} />
+                  {el.label && (
+                    <Text
+                      text={el.label}
+                      x={14}
+                      y={-8}
+                      fontSize={11}
+                      fontFamily="Space Grotesk, sans-serif"
+                      fontStyle="bold"
+                      fill="#FFFFFF"
+                      shadowColor="#000000"
+                      shadowBlur={6}
+                    />
+                  )}
+                </Group>
+              );
+            }
+            if (el.type === 'text') {
+              return (
+                <Group key={userId} x={el.x} y={el.y}>
+                  <Text
+                    text={el.text}
+                    fontSize={el.fontSize || 16}
+                    fontFamily="Space Grotesk, sans-serif"
+                    fontStyle="bold"
+                    fill={el.color}
+                    shadowColor="#000000"
+                    shadowBlur={8}
+                    shadowOpacity={0.9}
+                  />
+                </Group>
+              );
+            }
             return null;
           })}
 
@@ -776,6 +1077,18 @@ export default function TacticalCanvas({
                   pointerWidth={(activeElement as ArrowElement).pointerWidth || 12}
                   lineCap="round"
                   lineJoin="round"
+                  opacity={0.9}
+                />
+              )}
+              {activeElement.type === 'circle' && (
+                <Circle
+                  x={(activeElement as FilledCircleElement).x}
+                  y={(activeElement as FilledCircleElement).y}
+                  radius={(activeElement as FilledCircleElement).radius}
+                  fill={activeElement.color}
+                  fillOpacity={0.35}
+                  stroke={activeElement.color}
+                  strokeWidth={activeElement.strokeWidth}
                   opacity={0.9}
                 />
               )}
