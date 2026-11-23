@@ -12,12 +12,17 @@ import {
   Users,
   Wifi,
   WifiOff,
+  Mic,
+  MicOff,
+  Volume2,
 } from 'lucide-react';
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
 import { CallsignPrompt } from '@/components/room/callsign-prompt';
 import { RoomError } from '@/components/room/room-error';
 import { VALORANT_MAPS, ValorantMapData } from '@/constants/maps';
 import { CanvasWrapper } from '@/components/canvas/CanvasWrapper';
+import { useVoiceChat } from '@/hooks/useVoiceChat';
+import { VoiceControls } from '@/components/room/VoiceControls';
 
 const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
 
@@ -46,6 +51,9 @@ export default function RoomPage() {
   const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
   const [callsignInput, setCallsignInput] = useState('');
   const [callsignError, setCallsignError] = useState('');
+
+  // Voice Chat Hook (WebRTC Mesh + VAD Audio Meter)
+  const voice = useVoiceChat(roomId, socketId);
 
   // Selected map resolution
   const activeMap: ValorantMapData =
@@ -267,6 +275,18 @@ export default function RoomPage() {
 
         {/* Right Actions */}
         <div className="flex items-center gap-3">
+          {/* Tactical Voice Comms Controls */}
+          <VoiceControls
+            isMicEnabled={voice.isMicEnabled}
+            isMuted={voice.isMuted}
+            isDeafened={voice.isDeafened}
+            isSpeakingLocally={voice.isSpeakingLocally}
+            micError={voice.micError}
+            onEnableMic={voice.enableMicrophone}
+            onToggleMute={voice.toggleMute}
+            onToggleDeafen={voice.toggleDeafen}
+          />
+
           <button
             onClick={handleCopyLink}
             className={`flex items-center gap-1.5 text-xs font-display font-bold px-3 py-1.5 rounded-lg border transition-all ${
@@ -321,27 +341,45 @@ export default function RoomPage() {
             {room?.members.map((member) => {
               const isLeader = member.role === 'leader' || member.id === room.hostId;
               const isYou = member.id === socketId;
+              const isSpeaking = isYou ? voice.isSpeakingLocally : voice.voiceStatuses[member.id]?.isSpeaking;
+              const isMuted = isYou ? voice.isMuted : voice.voiceStatuses[member.id]?.isMuted;
 
               return (
                 <div
                   key={member.id}
-                  className="p-2.5 rounded-lg bg-[#191D27] border border-[#292E3A] flex items-center justify-between hover:border-[#3a3f4d] transition-all"
+                  className={`p-2.5 rounded-lg bg-[#191D27] border transition-all flex items-center justify-between ${
+                    isSpeaking
+                      ? 'border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]'
+                      : 'border-[#292E3A] hover:border-[#3a3f4d]'
+                  }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center font-display font-black text-xs text-white shadow-sm flex-shrink-0"
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-display font-black text-xs text-white shadow-sm flex-shrink-0 relative transition-transform ${
+                        isSpeaking ? 'ring-2 ring-green-400 scale-105' : ''
+                      }`}
                       style={{ backgroundColor: member.color }}
                     >
                       {member.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-display font-bold text-white truncate max-w-[130px]">
+                        <span className="text-xs font-display font-bold text-white truncate max-w-[120px]">
                           {member.name}
                         </span>
                         {isYou && (
                           <span className="text-[9px] font-tactical text-[#00F0FF]">(YOU)</span>
                         )}
+                        {/* Voice Status Indicator */}
+                        {isSpeaking ? (
+                          <span className="text-green-400 animate-pulse" title="Speaking">
+                            <Volume2 className="w-3 h-3" />
+                          </span>
+                        ) : isMuted ? (
+                          <span className="text-[#9298A5]" title="Muted">
+                            <MicOff className="w-2.5 h-2.5" />
+                          </span>
+                        ) : null}
                       </div>
                       <div className="text-[9px] font-tactical text-[#9298A5] flex items-center gap-1">
                         {isLeader ? (
