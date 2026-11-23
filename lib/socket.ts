@@ -90,7 +90,9 @@ export interface ServerToClientEvents {
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : undefined);
 
 let socket: TypedSocket | null = null;
 
@@ -100,6 +102,12 @@ let socket: TypedSocket | null = null;
  */
 export function getSocket(): TypedSocket {
   if (!socket) {
+    if (!BACKEND_URL) {
+      throw new Error(
+        'NEXT_PUBLIC_BACKEND_URL must be set to the deployed backend URL before building for production.'
+      );
+    }
+
     socket = io(BACKEND_URL, {
       autoConnect: true,
       withCredentials: true,
