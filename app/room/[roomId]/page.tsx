@@ -282,6 +282,8 @@ export default function RoomPage() {
             isDeafened={voice.isDeafened}
             isSpeakingLocally={voice.isSpeakingLocally}
             micError={voice.micError}
+            audioPlaybackBlocked={voice.audioPlaybackBlocked}
+            onEnableAudio={voice.enableRemoteAudio}
             onEnableMic={voice.enableMicrophone}
             onToggleMute={voice.toggleMute}
             onToggleDeafen={voice.toggleDeafen}

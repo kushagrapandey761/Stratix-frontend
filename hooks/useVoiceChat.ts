@@ -15,6 +15,14 @@ export interface RemoteVoiceUser {
   isSpeaking: boolean;
 }
 
+interface PeerNegotiationState {
+  polite: boolean;
+  makingOffer: boolean;
+  ignoreOffer: boolean;
+  isSettingRemoteAnswerPending: boolean;
+  pendingCandidates: RTCIceCandidateInit[];
+}
+
 export function useVoiceChat(roomId: string, currentUserId: string) {
   const [isMicEnabled, setIsMicEnabled] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -22,10 +30,13 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
   const [isSpeakingLocally, setIsSpeakingLocally] = useState(false);
   const [voiceStatuses, setVoiceStatuses] = useState<Record<string, RemoteVoiceUser>>({});
   const [micError, setMicError] = useState<string | null>(null);
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const negotiationStatesRef = useRef<Map<string, PeerNegotiationState>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const audioPlaybackEnabledRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -34,6 +45,33 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
 
   isMutedRef.current = isMuted;
   isDeafenedRef.current = isDeafened;
+
+  const playRemoteAudio = useCallback((audio: HTMLAudioElement) => {
+    if (!audioPlaybackEnabledRef.current) {
+      setAudioPlaybackBlocked(true);
+      return;
+    }
+
+    audio.muted = isDeafenedRef.current;
+    void audio.play().then(
+      () => setAudioPlaybackBlocked(false),
+      (err: unknown) => {
+        setAudioPlaybackBlocked(true);
+        if (!(err instanceof DOMException && err.name === 'NotAllowedError')) {
+          console.error('[WebRTC Audio Play Error]', err);
+        }
+      }
+    );
+  }, []);
+
+  const enableRemoteAudio = useCallback(() => {
+    audioPlaybackEnabledRef.current = true;
+    if (audioElementsRef.current.size === 0) {
+      setAudioPlaybackBlocked(false);
+      return;
+    }
+    audioElementsRef.current.forEach(playRemoteAudio);
+  }, [playRemoteAudio]);
 
   // Initialize Web Audio API to detect speaking level (Voice Activity Detection)
   const setupAudioMeter = (stream: MediaStream) => {
@@ -102,7 +140,7 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
 
   // Create an RTCPeerConnection for a remote peer
   const createPeerConnection = useCallback(
-    (targetUserId: string, isInitiator: boolean) => {
+    (targetUserId: string) => {
       // Return existing connection if present
       if (peerConnectionsRef.current.has(targetUserId)) {
         return peerConnectionsRef.current.get(targetUserId)!;
@@ -110,7 +148,15 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
 
       const socket = getSocket();
       const pc = new RTCPeerConnection(ICE_SERVERS);
+      const negotiationState: PeerNegotiationState = {
+        polite: currentUserId.localeCompare(targetUserId) > 0,
+        makingOffer: false,
+        ignoreOffer: false,
+        isSettingRemoteAnswerPending: false,
+        pendingCandidates: [],
+      };
       peerConnectionsRef.current.set(targetUserId, pc);
+      negotiationStatesRef.current.set(targetUserId, negotiationState);
 
       // Add local audio tracks to peer connection if mic is enabled
       if (localStreamRef.current) {
@@ -129,6 +175,23 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
         }
       };
 
+      pc.onnegotiationneeded = async () => {
+        if (pc.signalingState !== 'stable') return;
+
+        try {
+          negotiationState.makingOffer = true;
+          await pc.setLocalDescription();
+          socket.emit('webrtc_signal', {
+            to: targetUserId,
+            signal: { sdp: pc.localDescription },
+          });
+        } catch (err) {
+          console.error('[WebRTC Offer Error]', err);
+        } finally {
+          negotiationState.makingOffer = false;
+        }
+      };
+
       // Handle remote incoming audio track
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
@@ -137,19 +200,16 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
         let audio = audioElementsRef.current.get(targetUserId);
         if (!audio) {
           audio = new Audio();
-          audio.autoplay = true;
           audioElementsRef.current.set(targetUserId, audio);
         }
         audio.srcObject = remoteStream;
-        audio.muted = isDeafenedRef.current;
-        audio.play().catch((err) => {
-          console.warn('[WebRTC Audio Play Auto-block]', err);
-        });
+        playRemoteAudio(audio);
       };
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           peerConnectionsRef.current.delete(targetUserId);
+          negotiationStatesRef.current.delete(targetUserId);
           const audio = audioElementsRef.current.get(targetUserId);
           if (audio) {
             audio.pause();
@@ -159,29 +219,14 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
         }
       };
 
-      // If this peer is the initiator (existing member calling new joiner), create offer
-      if (isInitiator) {
-        pc.onnegotiationneeded = async () => {
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('webrtc_signal', {
-              to: targetUserId,
-              signal: { sdp: pc.localDescription },
-            });
-          } catch (err) {
-            console.error('[WebRTC Offer Error]', err);
-          }
-        };
-      }
-
       return pc;
     },
-    [roomId]
+    [currentUserId, playRemoteAudio]
   );
 
   // Request microphone permission and activate voice
   const enableMicrophone = async () => {
+    enableRemoteAudio();
     try {
       setMicError(null);
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -243,7 +288,7 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
     // 1. When another teammate joins the room, initiate a peer connection to them
     const onUserJoined = (data: { member: { id: string } }) => {
       if (data.member.id === currentUserId) return;
-      createPeerConnection(data.member.id, true);
+      createPeerConnection(data.member.id);
     };
 
     // 2. When a teammate leaves, clean up their peer connection
@@ -253,6 +298,7 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
         pc.close();
         peerConnectionsRef.current.delete(data.memberId);
       }
+      negotiationStatesRef.current.delete(data.memberId);
       const audio = audioElementsRef.current.get(data.memberId);
       if (audio) {
         audio.pause();
@@ -270,26 +316,46 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
     const onSignal = async (data: { from: string; signal: any }) => {
       let pc = peerConnectionsRef.current.get(data.from);
       if (!pc) {
-        // We received an offer from someone else; we are NOT the initiator
-        pc = createPeerConnection(data.from, false);
+        pc = createPeerConnection(data.from);
       }
+      const negotiationState = negotiationStatesRef.current.get(data.from);
+      if (!negotiationState) return;
 
       try {
         if (data.signal.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.signal.sdp));
+          const description = new RTCSessionDescription(data.signal.sdp);
+          const readyForOffer =
+            !negotiationState.makingOffer &&
+            (pc.signalingState === 'stable' || negotiationState.isSettingRemoteAnswerPending);
+          const offerCollision = description.type === 'offer' && !readyForOffer;
+          negotiationState.ignoreOffer = !negotiationState.polite && offerCollision;
+          if (negotiationState.ignoreOffer) return;
 
-          if (data.signal.sdp.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+          negotiationState.isSettingRemoteAnswerPending = description.type === 'answer';
+          await pc.setRemoteDescription(description);
+          negotiationState.isSettingRemoteAnswerPending = false;
+
+          for (const candidate of negotiationState.pendingCandidates.splice(0)) {
+            await pc.addIceCandidate(candidate);
+          }
+
+          if (description.type === 'offer') {
+            await pc.setLocalDescription(await pc.createAnswer());
             socket.emit('webrtc_signal', {
               to: data.from,
               signal: { sdp: pc.localDescription },
             });
           }
         } else if (data.signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
+          if (negotiationState.ignoreOffer) return;
+          if (!pc.remoteDescription) {
+            negotiationState.pendingCandidates.push(data.signal.candidate);
+          } else {
+            await pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
+          }
         }
       } catch (err) {
+        negotiationState.isSettingRemoteAnswerPending = false;
         console.error('[WebRTC Signal Process Error]', err);
       }
     };
@@ -332,6 +398,7 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
       }
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
+      negotiationStatesRef.current.clear();
       audioElementsRef.current.forEach((audio) => {
         audio.pause();
         audio.srcObject = null;
@@ -347,6 +414,8 @@ export function useVoiceChat(roomId: string, currentUserId: string) {
     isSpeakingLocally,
     voiceStatuses,
     micError,
+    audioPlaybackBlocked,
+    enableRemoteAudio,
     enableMicrophone,
     toggleMute,
     toggleDeafen,

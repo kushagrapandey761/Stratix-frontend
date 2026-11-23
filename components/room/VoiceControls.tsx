@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Mic, MicOff, Headphones, VolumeX, Radio } from 'lucide-react';
+import { Mic, MicOff, Headphones, VolumeX, Radio, Volume2 } from 'lucide-react';
 
 interface VoiceControlsProps {
   isMicEnabled: boolean;
@@ -9,6 +9,8 @@ interface VoiceControlsProps {
   isDeafened: boolean;
   isSpeakingLocally: boolean;
   micError: string | null;
+  audioPlaybackBlocked: boolean;
+  onEnableAudio: () => void;
   onEnableMic: () => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
@@ -20,6 +22,8 @@ export function VoiceControls({
   isDeafened,
   isSpeakingLocally,
   micError,
+  audioPlaybackBlocked,
+  onEnableAudio,
   onEnableMic,
   onToggleMute,
   onToggleDeafen,
@@ -51,7 +55,7 @@ export function VoiceControls({
       <div className="flex items-center gap-2">
         <button
           onClick={onEnableMic}
-          title="Connect to Tactical Voice Comms (P2P Encrypted)"
+          title="Join Tactical Voice Comms and enable incoming audio"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF4655]/10 border border-[#FF4655]/40 text-[#FF4655] hover:bg-[#FF4655] hover:text-white transition-all text-xs font-display font-bold shadow-lg shadow-[#FF4655]/10 group"
         >
           <Radio className="w-3.5 h-3.5 animate-pulse" />
@@ -68,6 +72,17 @@ export function VoiceControls({
 
   return (
     <div className="flex items-center gap-1.5 bg-[#191D27] border border-[#292E3A] rounded-lg p-1 shadow-md">
+      {audioPlaybackBlocked && (
+        <button
+          onClick={onEnableAudio}
+          title="Enable incoming voice audio"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-display font-bold text-[#00F0FF] hover:bg-[#141720]"
+        >
+          <Volume2 className="w-3.5 h-3.5" />
+          <span className="text-[10px] font-tactical">ENABLE AUDIO</span>
+        </button>
+      )}
+
       {/* Microphone Mute / Unmute Button */}
       <button
         onClick={onToggleMute}
