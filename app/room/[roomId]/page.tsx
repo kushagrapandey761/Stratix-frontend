@@ -7,6 +7,8 @@ import {
   Check,
   Copy,
   Crown,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Users,
   Wifi,
@@ -48,6 +50,7 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
   const [callsignInput, setCallsignInput] = useState('');
   const [callsignError, setCallsignError] = useState('');
@@ -319,22 +322,60 @@ export default function RoomPage() {
         </main>
 
         {/* Right Sidebar: Active Roster & Live Logs */}
-        <aside className="w-72 border-l border-[#292E3A] bg-[#141720] flex flex-col z-20 flex-shrink-0">
+        <aside
+          className={`border-l border-[#292E3A] bg-[#141720] flex flex-col z-20 flex-shrink-0 transition-[width] duration-200 ${
+            isSidebarCollapsed ? 'w-12' : 'w-72'
+          }`}
+        >
           {/* Roster Header */}
-          <div className="p-3.5 border-b border-[#292E3A] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#FF4655]" />
-              <span className="text-xs font-display font-bold text-white uppercase tracking-wider">
-                Active Operators ({room?.members.length || 0})
+          <div
+            className={`border-b border-[#292E3A] flex ${
+              isSidebarCollapsed
+                ? 'flex-col items-center gap-3 p-2'
+                : 'items-center justify-between gap-2 p-3.5'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={`${isSidebarCollapsed ? 'Expand' : 'Collapse'} active operators sidebar`}
+              title={`${isSidebarCollapsed ? 'Expand' : 'Collapse'} active operators`}
+              aria-expanded={!isSidebarCollapsed}
+              aria-controls="operator-sidebar-content"
+              className={`flex items-center gap-1.5 bg-[#141720]/95 backdrop-blur-md border border-[#292E3A] hover:border-[#FF4655] rounded-full text-[10px] font-tactical text-[#9298A5] hover:text-white transition-all shadow-xl ${
+                isSidebarCollapsed ? 'px-1.5 py-1' : 'px-3 py-1'
+              }`}
+            >
+              {isSidebarCollapsed ? (
+                <ChevronLeft className="w-3 h-3" />
+              ) : (
+                <>
+                  <Users className="w-3 h-3 text-[#FF4655]" />
+                  <span>ACTIVE OPERATORS ({room?.members.length || 0})</span>
+                  <ChevronRight className="w-3 h-3" />
+                </>
+              )}
+            </button>
+
+            {isSidebarCollapsed ? (
+              <div className="flex flex-col items-center gap-1 text-[#9298A5]" title="Active operators">
+                <Users className="w-4 h-4" />
+                <span className="text-[10px] font-tactical">{room?.members.length || 0}</span>
+              </div>
+            ) : (
+              <span className="text-[10px] font-tactical text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
+                LIVE SYNC
               </span>
-            </div>
-            <span className="text-[10px] font-tactical text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
-              LIVE SYNC
-            </span>
+            )}
           </div>
 
-          {/* Member List */}
-          <div className="p-3 space-y-2 overflow-y-auto flex-1">
+          <div
+            id="operator-sidebar-content"
+            className="flex min-h-0 flex-1 flex-col"
+            hidden={isSidebarCollapsed}
+          >
+              {/* Member List */}
+              <div className="p-3 space-y-2 overflow-y-auto flex-1">
             {room?.members.map((member) => {
               const isLeader = member.role === 'leader' || member.id === room.hostId;
               const isYou = member.id === socketId;
@@ -397,10 +438,10 @@ export default function RoomPage() {
                 </div>
               );
             })}
-          </div>
+              </div>
 
-          {/* Tactical Legend Box */}
-          <div className="p-3 border-t border-[#292E3A] bg-[#10141D] text-[10px] font-tactical space-y-1">
+              {/* Tactical Legend Box */}
+              <div className="p-3 border-t border-[#292E3A] bg-[#10141D] text-[10px] font-tactical space-y-1">
             <div className="text-[#9298A5] uppercase tracking-wider mb-1 font-bold">
               Color Protocol
             </div>
@@ -424,10 +465,10 @@ export default function RoomPage() {
               <span className="w-2 h-2 rounded-full bg-[#A855F7]" />
               <span>Purple: Fake & Alternate</span>
             </div>
-          </div>
+              </div>
 
-          {/* Activity / Sync Stream */}
-          <div className="border-t border-[#292E3A] p-3 bg-[#0B0D12]">
+              {/* Activity / Sync Stream */}
+              <div className="border-t border-[#292E3A] p-3 bg-[#0B0D12]">
             <div className="text-[10px] font-tactical text-[#9298A5] uppercase tracking-wider mb-1.5">
               Tactical Event Log
             </div>
@@ -442,6 +483,7 @@ export default function RoomPage() {
                 ))
               )}
             </div>
+              </div>
           </div>
         </aside>
       </div>
