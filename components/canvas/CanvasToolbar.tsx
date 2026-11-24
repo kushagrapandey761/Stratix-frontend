@@ -35,6 +35,13 @@ const TOOLS: ToolDefinition[] = [
     description: 'Select, drag, or delete elements',
   },
   {
+    id: 'eraser',
+    label: 'Eraser',
+    hotkey: 'E',
+    icon: Eraser,
+    description: 'Click or tap an element to erase it',
+  },
+  {
     id: 'draw',
     label: 'Freehand Path',
     hotkey: 'D',
@@ -76,23 +83,16 @@ const TOOLS: ToolDefinition[] = [
     icon: Type,
     description: 'Add tactical callouts & strategy notes',
   },
-  {
-    id: 'eraser',
-    label: 'Eraser',
-    hotkey: 'E',
-    icon: Eraser,
-    description: 'Click elements to erase them',
-  },
 ];
 
 export function CanvasToolbar({ currentTool, onSelectTool }: CanvasToolbarProps) {
   return (
-    <aside className="absolute left-4 top-20 z-30 flex flex-col items-center bg-[#141720]/95 backdrop-blur-md border border-[#292E3A] rounded-xl p-1.5 shadow-2xl gap-1.5">
-      <div className="text-[9px] font-tactical text-[#9298A5] px-1 py-0.5 uppercase tracking-wider text-center border-b border-[#292E3A] pb-1 w-full">
+    <aside className="absolute left-4 top-20 z-30 grid grid-cols-2 content-start items-center bg-[#141720]/95 backdrop-blur-md border border-[#292E3A] rounded-xl p-1.5 shadow-2xl gap-1.5">
+      <div className="col-span-2 text-[9px] font-tactical text-[#9298A5] px-1 py-0.5 uppercase tracking-wider text-center border-b border-[#292E3A] pb-1 w-full">
         TOOLS
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="col-span-2 grid grid-cols-2 gap-1">
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
           const isActive = currentTool === tool.id;
@@ -102,7 +102,7 @@ export function CanvasToolbar({ currentTool, onSelectTool }: CanvasToolbarProps)
               key={tool.id}
               onClick={() => onSelectTool(tool.id)}
               title={`${tool.label} (${tool.hotkey}) - ${tool.description}`}
-              className={`relative group w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+              className={`relative group w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
                 isActive
                   ? 'bg-[#FF4655] text-white shadow-[0_0_15px_rgba(255,70,85,0.4)] scale-105'
                   : 'text-[#9298A5] hover:text-white hover:bg-[#191D27]'

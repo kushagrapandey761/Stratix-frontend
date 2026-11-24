@@ -68,6 +68,7 @@ export default function TacticalCanvas({
   const lastCursorEmit = useRef<number>(0);
   const lastDrawLiveEmit = useRef<number>(0);
   const lastDragLiveEmit = useRef<number>(0);
+  const isErasingRef = useRef(false);
 
   // Viewport dimensions
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
@@ -412,6 +413,22 @@ export default function TacticalCanvas({
     };
   };
 
+  const eraseTarget = (target: Konva.Node | null) => {
+    let node = target;
+    while (node && node !== stageRef.current) {
+      const elementId = node.id();
+      if (elements.some((element) => element.id === elementId)) {
+        commitElements(elements.filter((element) => element.id !== elementId));
+        setSelectedId((id) => (id === elementId ? null : id));
+        if (roomId) {
+          getSocket().emit('element_delete', { roomId, elementId });
+        }
+        return;
+      }
+      node = node.getParent();
+    }
+  };
+
   // Pointer Down (Drawing start or Pan start)
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const evt = e.evt as MouseEvent;
@@ -434,14 +451,9 @@ export default function TacticalCanvas({
     }
 
     if (currentTool === 'eraser') {
-      const clickedId = clickedTarget.id() || clickedTarget.getParent()?.id();
-      if (clickedId) {
-        commitElements(elements.filter((el) => el.id !== clickedId));
-        if (selectedId === clickedId) setSelectedId(null);
-        if (roomId) {
-          getSocket().emit('element_delete', { roomId, elementId: clickedId });
-        }
-      }
+      isErasingRef.current = true;
+      const pointer = stageRef.current?.getPointerPosition();
+      eraseTarget(pointer && stageRef.current ? stageRef.current.getIntersection(pointer) : clickedTarget);
       return;
     }
 
@@ -541,6 +553,15 @@ export default function TacticalCanvas({
       return;
     }
 
+    if (currentTool === 'eraser' && isErasingRef.current) {
+      const stage = stageRef.current;
+      const pointer = stage?.getPointerPosition();
+      if (pointer && stage) {
+        eraseTarget(stage.getIntersection(pointer));
+      }
+      return;
+    }
+
     if (!activeElement) return;
     const pos = getRelativePointerPosition();
     let updatedElement: CanvasElement | null = null;
@@ -576,6 +597,7 @@ export default function TacticalCanvas({
   };
 
   const handleMouseLeave = () => {
+    isErasingRef.current = false;
     if (roomId) {
       const socket = getSocket();
       socket.emit('cursor_leave', { roomId });
@@ -584,6 +606,11 @@ export default function TacticalCanvas({
 
   // Pointer Up (Drawing commit or Pan end)
   const handleMouseUp = () => {
+    if (isErasingRef.current) {
+      isErasingRef.current = false;
+      return;
+    }
+
     if (isPanning) {
       setIsPanning(false);
       return;
@@ -788,7 +815,6 @@ export default function TacticalCanvas({
                   opacity={draw.opacity ?? 0.95}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(draw.id);
-                    if (currentTool === 'eraser') commitElements(elements.filter((item) => item.id !== draw.id));
                   }}
                   shadowColor={isSelected ? '#FFFFFF' : draw.color}
                   shadowBlur={isSelected ? 10 : 3}
@@ -811,7 +837,6 @@ export default function TacticalCanvas({
                   opacity={line.opacity ?? 0.95}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(line.id);
-                    if (currentTool === 'eraser') commitElements(elements.filter((item) => item.id !== line.id));
                   }}
                   shadowColor={isSelected ? '#FFFFFF' : line.color}
                   shadowBlur={isSelected ? 10 : 3}
@@ -837,7 +862,6 @@ export default function TacticalCanvas({
                   opacity={arrow.opacity ?? 0.95}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(arrow.id);
-                    if (currentTool === 'eraser') commitElements(elements.filter((item) => item.id !== arrow.id));
                   }}
                   shadowColor={isSelected ? '#FFFFFF' : arrow.color}
                   shadowBlur={isSelected ? 10 : 3}
@@ -862,9 +886,6 @@ export default function TacticalCanvas({
                   opacity={circle.opacity ?? 0.95}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(circle.id);
-                    if (currentTool === 'eraser') {
-                      commitElements(elements.filter((item) => item.id !== circle.id));
-                    }
                   }}
                   shadowColor={isSelected ? '#FFFFFF' : circle.color}
                   shadowBlur={isSelected ? 10 : 3}
@@ -886,7 +907,6 @@ export default function TacticalCanvas({
                   onDragEnd={(e) => handleDragEnd(ping.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(ping.id);
-                    if (currentTool === 'eraser') commitElements(elements.filter((item) => item.id !== ping.id));
                   }}
                 >
                   <Circle radius={16} stroke={ping.color} strokeWidth={1.5} opacity={0.4} />
@@ -923,7 +943,6 @@ export default function TacticalCanvas({
                   onDragEnd={(e) => handleDragEnd(textEl.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(textEl.id);
-                    if (currentTool === 'eraser') commitElements(elements.filter((item) => item.id !== textEl.id));
                   }}
                 >
                   <Text
