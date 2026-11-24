@@ -1,20 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronRight, Globe, Lock, Map, Plus, Share2, Shield, Target, Users, Zap } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { BrandLogo } from '../ui/brand-logo';
 
 export function Navbar({ onCreateClick, onJoinClick }: { onCreateClick: () => void; onJoinClick: () => void }) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-[#292E3A] bg-[#0B0D12]/90 backdrop-blur-md">
       <div className="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded bg-[#FF4655] flex items-center justify-center">
-            <Target className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-display font-black text-white text-lg tracking-widest uppercase">STRATIX</span>
-          <span className="text-[9px] font-tactical text-[#FF4655] tracking-widest border border-[#FF4655]/30 px-1 py-0.5 rounded">
-            TACTICAL
-          </span>
+          <BrandLogo showTag />
         </Link>
 
         <div className="hidden md:flex items-center gap-8">

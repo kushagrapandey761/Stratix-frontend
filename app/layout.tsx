@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "STRATIX – Collaborative Valorant Strategy Planner",
   description: "Build, share, and execute winning Valorant strategies with your team in real time.",
+  icons: {
+    icon: [{ url: '/stratix-mark.svg', type: 'image/svg+xml' }],
+    shortcut: '/stratix-mark.svg',
+  },
 };
 
 export default function RootLayout({

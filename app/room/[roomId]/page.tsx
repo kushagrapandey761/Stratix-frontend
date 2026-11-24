@@ -8,7 +8,6 @@ import {
   Copy,
   Crown,
   LogOut,
-  Shield,
   Users,
   Wifi,
   WifiOff,
@@ -23,6 +22,7 @@ import { VALORANT_MAPS, ValorantMapData } from '@/constants/maps';
 import { CanvasWrapper } from '@/components/canvas/CanvasWrapper';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { VoiceControls } from '@/components/room/VoiceControls';
+import { BrandLogo } from '@/components/ui/brand-logo';
 
 const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
 
@@ -232,12 +232,7 @@ export default function RoomPage() {
       <header className="h-14 border-b border-[#292E3A] bg-[#141720]/90 backdrop-blur-md px-5 flex items-center justify-between z-20 flex-shrink-0">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-[#FF4655] flex items-center justify-center text-white font-bold">
-              <Shield className="w-4 h-4" />
-            </div>
-            <span className="font-display font-black text-white text-base tracking-widest uppercase">
-              STRATIX
-            </span>
+            <BrandLogo size={28} />
           </Link>
 
           <div className="h-4 w-px bg-[#292E3A]" />
