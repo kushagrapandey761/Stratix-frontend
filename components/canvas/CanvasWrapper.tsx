@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import React from 'react';
 import { Loader2 } from 'lucide-react';
-import { ValorantMapData } from '../../constants/maps';
+import type { IValorantMap } from '../landing/supported-maps/IMapsResponse';
 import { CanvasElement } from '../../types/canvas';
 
 const DynamicTacticalCanvas = dynamic(
@@ -22,8 +22,9 @@ const DynamicTacticalCanvas = dynamic(
 );
 
 interface CanvasWrapperProps {
-  currentMap: ValorantMapData;
-  onSelectMap: (map: ValorantMapData) => void;
+  currentMap: IValorantMap;
+  maps: IValorantMap[];
+  onSelectMap: (map: IValorantMap) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
   initialElements?: CanvasElement[];
   roomId?: string;

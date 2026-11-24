@@ -22,17 +22,19 @@ import {
   PingElement,
   TextElement,
 } from '../../types/canvas';
-import { ValorantMapData } from '../../constants/maps';
+import type { IValorantMap } from '../landing/supported-maps/IMapsResponse';
 import { CanvasToolbar } from './CanvasToolbar';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { CanvasControls } from './CanvasControls';
 import { BottomMapSelector } from './BottomMapSelector';
 import { RemoteCursor } from './RemoteCursor';
 import { getSocket } from '../../lib/socket';
+import { getMapSiteCount } from '../../lib/valorant-maps';
 
 interface TacticalCanvasProps {
-  currentMap: ValorantMapData;
-  onSelectMap: (map: ValorantMapData) => void;
+  currentMap: IValorantMap;
+  maps: IValorantMap[];
+  onSelectMap: (map: IValorantMap) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
   initialElements?: CanvasElement[];
   roomId?: string;
@@ -57,6 +59,7 @@ function shouldBroadcastLiveUpdate(lastEmittedAt: { current: number }) {
 
 export default function TacticalCanvas({
   currentMap,
+  maps,
   onSelectMap,
   onElementsChange,
   initialElements,
@@ -140,7 +143,7 @@ export default function TacticalCanvas({
         y: (dimensions.height - MAP_HEIGHT * initialScale) / 2,
       });
     }
-  }, [dimensions, currentMap.id]);
+  }, [dimensions, currentMap.uuid]);
 
   // Listen for remote cursors from other teammates in the room
   useEffect(() => {
@@ -707,13 +710,13 @@ export default function TacticalCanvas({
         <div className="absolute inset-0 bg-[#121620] rounded-2xl border border-[#292E3A]/80 shadow-[0_0_60px_rgba(0,0,0,0.8)] overflow-hidden">
           {/* Valorant Top-Down Minimap (Always loads natively with 0 CORS issues) */}
           <img
-            src={currentMap.minimapUrl}
+            src={currentMap.displayIcon}
             alt={currentMap.displayName}
             className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(255,70,85,0.15)] select-none opacity-95"
             draggable={false}
             onError={(e) => {
               // Graceful fallback to splash image if minimap network hiccup
-              (e.currentTarget as HTMLImageElement).src = currentMap.splashUrl;
+              (e.currentTarget as HTMLImageElement).src = currentMap.splash || currentMap.displayIcon;
             }}
           />
 
@@ -723,7 +726,9 @@ export default function TacticalCanvas({
               {currentMap.displayName}
             </span>
             <span className="text-[9px] font-tactical px-1.5 py-0.5 rounded bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655]">
-              {currentMap.sites}
+              {getMapSiteCount(currentMap)
+                ? `${getMapSiteCount(currentMap)} SITES`
+                : 'TACTICAL MAP'}
             </span>
           </div>
         </div>
@@ -772,7 +777,7 @@ export default function TacticalCanvas({
       />
 
       {/* ── Layer 4: Bottom Map Selector ── */}
-      <BottomMapSelector currentMap={currentMap} onSelectMap={onSelectMap} />
+      <BottomMapSelector currentMap={currentMap} maps={maps} onSelectMap={onSelectMap} />
 
       {/* ── Layer 5: Transparent Konva Interactive Drawing Canvas ── */}
       <Stage

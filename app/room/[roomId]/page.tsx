@@ -20,11 +20,12 @@ import {
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
 import { CallsignPrompt } from '@/components/room/callsign-prompt';
 import { RoomError } from '@/components/room/room-error';
-import { VALORANT_MAPS, ValorantMapData } from '@/constants/maps';
 import { CanvasWrapper } from '@/components/canvas/CanvasWrapper';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { VoiceControls } from '@/components/room/VoiceControls';
 import { BrandLogo } from '@/components/ui/brand-logo';
+import { fetchCompetitiveMaps } from '@/lib/valorant-maps';
+import type { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
 
 const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
 
@@ -51,6 +52,7 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [maps, setMaps] = useState<IValorantMap[]>([]);
   const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
   const [callsignInput, setCallsignInput] = useState('');
   const [callsignError, setCallsignError] = useState('');
@@ -59,9 +61,34 @@ export default function RoomPage() {
   const voice = useVoiceChat(roomId, socketId);
 
   // Selected map resolution
-  const activeMap: ValorantMapData =
-    VALORANT_MAPS.find((m) => m.id.toLowerCase() === room?.mapId?.toLowerCase()) ||
-    VALORANT_MAPS[0]; // Default to Ascent
+  const savedMapId = room?.mapId?.toLowerCase();
+  const activeMap =
+    maps.find(
+      (map) =>
+        map.uuid.toLowerCase() === savedMapId ||
+        map.displayName.toLowerCase() === savedMapId ||
+        map.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') ===
+          savedMapId?.replace(/[^a-z0-9]/g, '')
+    ) ?? maps[0];
+
+  useEffect(() => {
+    let active = true;
+    void fetchCompetitiveMaps()
+      .then((loadedMaps) => {
+        if (active) setMaps(loadedMaps);
+      })
+      .catch((fetchError: unknown) => {
+        if (active) {
+          setError(
+            fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant maps.'
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!roomId || !userName) return;
@@ -178,10 +205,10 @@ export default function RoomPage() {
     router.push('/');
   };
 
-  const handleSelectMap = (map: ValorantMapData) => {
+  const handleSelectMap = (map: IValorantMap) => {
     const socket = getSocket();
-    socket.emit('select_map', { roomId, mapId: map.id });
-    setRoom((prev) => (prev ? { ...prev, mapId: map.id } : prev));
+    socket.emit('select_map', { roomId, mapId: map.uuid });
+    setRoom((prev) => (prev ? { ...prev, mapId: map.uuid } : prev));
     addLog(`[>] Map switched to: ${map.displayName.toUpperCase()}`);
   };
 
@@ -245,7 +272,7 @@ export default function RoomPage() {
               {room?.name || 'INITIALIZING ROOM...'}
             </span>
             <span className="text-[10px] font-tactical px-2 py-0.5 rounded bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] uppercase">
-              {activeMap.displayName}
+              {activeMap?.displayName ?? 'LOADING MAPS...'}
             </span>
           </div>
         </div>
@@ -313,12 +340,19 @@ export default function RoomPage() {
       <div className="flex-1 flex overflow-hidden relative">
         {/* Interactive Tactical Canvas Area */}
         <main className="flex-1 relative h-full w-full overflow-hidden bg-[#0B0D12]">
-          <CanvasWrapper
-            currentMap={activeMap}
-            onSelectMap={handleSelectMap}
-            initialElements={room?.elements}
-            roomId={roomId}
-          />
+          {activeMap ? (
+            <CanvasWrapper
+              currentMap={activeMap}
+              maps={maps}
+              onSelectMap={handleSelectMap}
+              initialElements={room?.elements}
+              roomId={roomId}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs font-tactical text-[#9298A5]">
+              LOADING MAP DATABASE...
+            </div>
+          )}
         </main>
 
         {/* Right Sidebar: Active Roster & Live Logs */}

@@ -2,14 +2,16 @@
 
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Map as MapIcon } from 'lucide-react';
-import { VALORANT_MAPS, ValorantMapData } from '../../constants/maps';
+import type { IValorantMap } from '../landing/supported-maps/IMapsResponse';
+import { getMapSiteCount } from '../../lib/valorant-maps';
 
 interface BottomMapSelectorProps {
-  currentMap: ValorantMapData;
-  onSelectMap: (map: ValorantMapData) => void;
+  currentMap: IValorantMap;
+  maps: IValorantMap[];
+  onSelectMap: (map: IValorantMap) => void;
 }
 
-export function BottomMapSelector({ currentMap, onSelectMap }: BottomMapSelectorProps) {
+export function BottomMapSelector({ currentMap, maps, onSelectMap }: BottomMapSelectorProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
@@ -20,19 +22,20 @@ export function BottomMapSelector({ currentMap, onSelectMap }: BottomMapSelector
         className="mb-1.5 flex items-center gap-1.5 px-3 py-1 bg-[#141720]/95 backdrop-blur-md border border-[#292E3A] hover:border-[#FF4655] rounded-full text-[10px] font-tactical text-[#9298A5] hover:text-white transition-all shadow-xl"
       >
         <MapIcon className="w-3 h-3 text-[#FF4655]" />
-        <span>MAP SELECTOR ({VALORANT_MAPS.length})</span>
+        <span>MAP SELECTOR ({maps.length})</span>
         {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
       </button>
 
       {/* Map Strip */}
       {isExpanded && (
         <div className="bg-[#141720]/95 backdrop-blur-md border border-[#292E3A] rounded-xl p-2 shadow-2xl flex items-center gap-2 max-w-[85vw] overflow-x-auto scrollbar-none animate-slide-up">
-          {VALORANT_MAPS.map((map) => {
-            const isSelected = map.id.toLowerCase() === currentMap.id.toLowerCase();
+          {maps.map((map) => {
+            const isSelected = map.uuid === currentMap.uuid;
+            const siteCount = getMapSiteCount(map);
 
             return (
               <button
-                key={map.id}
+                key={map.uuid}
                 onClick={() => onSelectMap(map)}
                 className={`relative flex-shrink-0 w-24 h-14 rounded-lg overflow-hidden border transition-all group ${
                   isSelected
@@ -41,13 +44,13 @@ export function BottomMapSelector({ currentMap, onSelectMap }: BottomMapSelector
                 }`}
               >
                 <img
-                  src={map.splashUrl}
+                  src={map.splash || map.displayIcon}
                   alt={map.displayName}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   loading="lazy"
                   onError={(e) => {
                     // Fallback to minimap if splash fails
-                    (e.currentTarget as HTMLImageElement).src = map.minimapUrl;
+                    (e.currentTarget as HTMLImageElement).src = map.displayIcon;
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
@@ -56,7 +59,7 @@ export function BottomMapSelector({ currentMap, onSelectMap }: BottomMapSelector
                     {map.displayName}
                   </span>
                   <span className="text-[8px] font-tactical text-[#FF4655]">
-                    {map.sites.includes('3') ? '3S' : '2S'}
+                    {siteCount ? `${siteCount}S` : null}
                   </span>
                 </div>
               </button>

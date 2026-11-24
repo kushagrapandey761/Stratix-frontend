@@ -2,23 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { fetchValorantMaps } from '@/lib/valorant-maps';
+import { fetchCompetitiveMaps } from '@/lib/valorant-maps';
 import type { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
-
-const COMPETITIVE_MAP_NAMES = [
-  'Ascent',
-  'Bind',
-  'Haven',
-  'Split',
-  'Lotus',
-  'Sunset',
-  'Icebox',
-  'Breeze',
-  'Fracture',
-  'Pearl',
-  'Abyss',
-  'Corrode',
-];
 
 export function SupportedMaps() {
   const [maps, setMaps] = useState<IValorantMap[]>([]);
@@ -28,16 +13,7 @@ export function SupportedMaps() {
 
     async function loadMaps() {
       try {
-        const mapData = await fetchValorantMaps();
-        const mapsByName = new Map(
-          mapData.map((map) => [map.displayName, map] as const),
-        );
-        setMaps(
-          COMPETITIVE_MAP_NAMES.flatMap((name) => {
-            const map = mapsByName.get(name);
-            return map ? [map] : [];
-          }),
-        );
+        setMaps(await fetchCompetitiveMaps());
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant maps');
       }

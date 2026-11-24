@@ -4,6 +4,7 @@ export interface IValorantMap {
   displayIcon: string;
   splash?: string;
   listViewIcon?: string;
+  tacticalDescription?: string;
 }
 
 export interface IMapsResponse {
