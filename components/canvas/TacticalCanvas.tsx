@@ -625,49 +625,73 @@ export default function TacticalCanvas({
     broadcastElementCommit(activeElement);
   };
 
-  // Element Drag End
-  const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
-    const { x, y } = e.target.position();
-    const element = elements.find((el) => el.id === id);
-    if (element && (element.type === 'ping' || element.type === 'text')) {
-      const updatedElement = { ...element, x, y };
-      if (roomId) {
-        const socket = getSocket();
-        if (shouldBroadcastLiveUpdate(lastCursorEmit)) {
-          const pointerPos = getRelativePointerPosition();
-          socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
-        }
-        if (shouldBroadcastLiveUpdate(lastDragLiveEmit)) {
-          socket.emit('drawing_live', { roomId, element: updatedElement });
-        }
-      }
+  const getDraggedElement = (
+    element: CanvasElement,
+    node: Konva.Node
+  ): CanvasElement => {
+    const x = node.x();
+    const y = node.y();
+
+    if (element.type === 'ping' || element.type === 'text' || element.type === 'circle') {
+      return { ...element, x, y };
     }
 
-    setElements((prev) =>
-      prev.map((el) =>
-        el.id === id && (el.type === 'ping' || el.type === 'text')
-          ? { ...el, x, y }
-          : el
-      )
-    );
+    if (element.type === 'draw') {
+      return {
+        ...element,
+        points: element.points.map((point, index) => point + (index % 2 === 0 ? x : y)),
+      };
+    }
+
+    if (element.type === 'line' || element.type === 'arrow') {
+      return {
+        ...element,
+        points: [
+          element.points[0] + x,
+          element.points[1] + y,
+          element.points[2] + x,
+          element.points[3] + y,
+        ],
+      };
+    }
+
+    return element;
+  };
+
+  const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    const element = elements.find((el) => el.id === id);
+    if (!element || !roomId) return;
+
+    const socket = getSocket();
+    if (shouldBroadcastLiveUpdate(lastCursorEmit)) {
+      const pointerPos = getRelativePointerPosition();
+      socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
+    }
+    if (shouldBroadcastLiveUpdate(lastDragLiveEmit)) {
+      socket.emit('drawing_live', {
+        roomId,
+        element: getDraggedElement(element, e.target),
+      });
+    }
   };
 
   const handleDragEnd = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
-    let updatedElement: CanvasElement | null = null;
-    const updated = elements.map((el) => {
-      if (el.id !== id) return el;
-      if (el.type === 'ping' || el.type === 'text') {
-        updatedElement = {
-          ...el,
-          x: e.target.x(),
-          y: e.target.y(),
-        };
-        return updatedElement;
-      }
-      return el;
-    });
+    const element = elements.find((el) => el.id === id);
+    if (!element) return;
+
+    const updatedElement = getDraggedElement(element, e.target);
+    const updated = elements.map((el) => (el.id === id ? updatedElement : el));
+
+    if (
+      (updatedElement.type === 'draw' ||
+        updatedElement.type === 'line' ||
+        updatedElement.type === 'arrow')
+    ) {
+      e.target.position({ x: 0, y: 0 });
+    }
+
     commitElements(updated);
-    if (updatedElement) broadcastElementCommit(updatedElement);
+    broadcastElementCommit(updatedElement);
   };
 
   // Cursor style
@@ -818,6 +842,9 @@ export default function TacticalCanvas({
                   lineCap="round"
                   lineJoin="round"
                   opacity={draw.opacity ?? 0.95}
+                  draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(draw.id, e)}
+                  onDragEnd={(e) => handleDragEnd(draw.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(draw.id);
                   }}
@@ -840,6 +867,9 @@ export default function TacticalCanvas({
                   lineCap="round"
                   lineJoin="round"
                   opacity={line.opacity ?? 0.95}
+                  draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(line.id, e)}
+                  onDragEnd={(e) => handleDragEnd(line.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(line.id);
                   }}
@@ -865,6 +895,9 @@ export default function TacticalCanvas({
                   lineCap="round"
                   lineJoin="round"
                   opacity={arrow.opacity ?? 0.95}
+                  draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(arrow.id, e)}
+                  onDragEnd={(e) => handleDragEnd(arrow.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(arrow.id);
                   }}
@@ -889,6 +922,9 @@ export default function TacticalCanvas({
                   stroke={circle.color}
                   strokeWidth={circle.strokeWidth}
                   opacity={circle.opacity ?? 0.95}
+                  draggable={currentTool === 'select'}
+                  onDragMove={(e) => handleDragMove(circle.id, e)}
+                  onDragEnd={(e) => handleDragEnd(circle.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(circle.id);
                   }}
