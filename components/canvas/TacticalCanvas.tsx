@@ -625,38 +625,16 @@ export default function TacticalCanvas({
     broadcastElementCommit(activeElement);
   };
 
-  const getDraggedElement = (
+  const getTransformedElement = (
     element: CanvasElement,
     node: Konva.Node
-  ): CanvasElement => {
-    const x = node.x();
-    const y = node.y();
-
-    if (element.type === 'ping' || element.type === 'text' || element.type === 'circle') {
-      return { ...element, x, y };
-    }
-
-    if (element.type === 'draw') {
-      return {
-        ...element,
-        points: element.points.map((point, index) => point + (index % 2 === 0 ? x : y)),
-      };
-    }
-
-    if (element.type === 'line' || element.type === 'arrow') {
-      return {
-        ...element,
-        points: [
-          element.points[0] + x,
-          element.points[1] + y,
-          element.points[2] + x,
-          element.points[3] + y,
-        ],
-      };
-    }
-
-    return element;
-  };
+  ): CanvasElement => ({
+    ...element,
+    x: node.x(),
+    y: node.y(),
+    scaleX: node.scaleX(),
+    scaleY: node.scaleY(),
+  });
 
   const handleDragMove = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
     const element = elements.find((el) => el.id === id);
@@ -668,10 +646,7 @@ export default function TacticalCanvas({
       socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
     }
     if (shouldBroadcastLiveUpdate(lastDragLiveEmit)) {
-      socket.emit('drawing_live', {
-        roomId,
-        element: getDraggedElement(element, e.target),
-      });
+      socket.emit('drawing_live', { roomId, element: getTransformedElement(element, e.target) });
     }
   };
 
@@ -679,18 +654,29 @@ export default function TacticalCanvas({
     const element = elements.find((el) => el.id === id);
     if (!element) return;
 
-    const updatedElement = getDraggedElement(element, e.target);
+    const updatedElement = getTransformedElement(element, e.target);
     const updated = elements.map((el) => (el.id === id ? updatedElement : el));
 
-    if (
-      (updatedElement.type === 'draw' ||
-        updatedElement.type === 'line' ||
-        updatedElement.type === 'arrow')
-    ) {
-      e.target.position({ x: 0, y: 0 });
-    }
-
     commitElements(updated);
+    broadcastElementCommit(updatedElement);
+  };
+
+  const handleTransform = (id: string, e: Konva.KonvaEventObject<Event>) => {
+    const element = elements.find((el) => el.id === id);
+    if (!element || !roomId || !shouldBroadcastLiveUpdate(lastDragLiveEmit)) return;
+
+    getSocket().emit('drawing_live', {
+      roomId,
+      element: getTransformedElement(element, e.target),
+    });
+  };
+
+  const handleTransformEnd = (id: string, e: Konva.KonvaEventObject<Event>) => {
+    const element = elements.find((el) => el.id === id);
+    if (!element) return;
+
+    const updatedElement = getTransformedElement(element, e.target);
+    commitElements(elements.map((el) => (el.id === id ? updatedElement : el)));
     broadcastElementCommit(updatedElement);
   };
 
@@ -835,6 +821,10 @@ export default function TacticalCanvas({
                 <Line
                   key={draw.id}
                   id={draw.id}
+                  x={draw.x ?? 0}
+                  y={draw.y ?? 0}
+                  scaleX={draw.scaleX ?? 1}
+                  scaleY={draw.scaleY ?? 1}
                   points={draw.points}
                   stroke={draw.color}
                   strokeWidth={draw.strokeWidth}
@@ -845,6 +835,8 @@ export default function TacticalCanvas({
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(draw.id, e)}
                   onDragEnd={(e) => handleDragEnd(draw.id, e)}
+                  onTransform={(e) => handleTransform(draw.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(draw.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(draw.id);
                   }}
@@ -861,6 +853,10 @@ export default function TacticalCanvas({
                 <Line
                   key={line.id}
                   id={line.id}
+                  x={line.x ?? 0}
+                  y={line.y ?? 0}
+                  scaleX={line.scaleX ?? 1}
+                  scaleY={line.scaleY ?? 1}
                   points={line.points}
                   stroke={line.color}
                   strokeWidth={line.strokeWidth}
@@ -870,6 +866,8 @@ export default function TacticalCanvas({
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(line.id, e)}
                   onDragEnd={(e) => handleDragEnd(line.id, e)}
+                  onTransform={(e) => handleTransform(line.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(line.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(line.id);
                   }}
@@ -886,6 +884,10 @@ export default function TacticalCanvas({
                 <Arrow
                   key={arrow.id}
                   id={arrow.id}
+                  x={arrow.x ?? 0}
+                  y={arrow.y ?? 0}
+                  scaleX={arrow.scaleX ?? 1}
+                  scaleY={arrow.scaleY ?? 1}
                   points={arrow.points}
                   stroke={arrow.color}
                   fill={arrow.color}
@@ -898,6 +900,8 @@ export default function TacticalCanvas({
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(arrow.id, e)}
                   onDragEnd={(e) => handleDragEnd(arrow.id, e)}
+                  onTransform={(e) => handleTransform(arrow.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(arrow.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(arrow.id);
                   }}
@@ -916,6 +920,8 @@ export default function TacticalCanvas({
                   id={circle.id}
                   x={circle.x}
                   y={circle.y}
+                  scaleX={circle.scaleX ?? 1}
+                  scaleY={circle.scaleY ?? 1}
                   radius={circle.radius}
                   fill={circle.color}
                   fillOpacity={0.35}
@@ -925,6 +931,8 @@ export default function TacticalCanvas({
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(circle.id, e)}
                   onDragEnd={(e) => handleDragEnd(circle.id, e)}
+                  onTransform={(e) => handleTransform(circle.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(circle.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(circle.id);
                   }}
@@ -943,9 +951,13 @@ export default function TacticalCanvas({
                   id={ping.id}
                   x={ping.x}
                   y={ping.y}
+                  scaleX={ping.scaleX ?? 1}
+                  scaleY={ping.scaleY ?? 1}
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(ping.id, e)}
                   onDragEnd={(e) => handleDragEnd(ping.id, e)}
+                  onTransform={(e) => handleTransform(ping.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(ping.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(ping.id);
                   }}
@@ -979,9 +991,13 @@ export default function TacticalCanvas({
                   id={textEl.id}
                   x={textEl.x}
                   y={textEl.y}
+                  scaleX={textEl.scaleX ?? 1}
+                  scaleY={textEl.scaleY ?? 1}
                   draggable={currentTool === 'select'}
                   onDragMove={(e) => handleDragMove(textEl.id, e)}
                   onDragEnd={(e) => handleDragEnd(textEl.id, e)}
+                  onTransform={(e) => handleTransform(textEl.id, e)}
+                  onTransformEnd={(e) => handleTransformEnd(textEl.id, e)}
                   onClick={() => {
                     if (currentTool === 'select') setSelectedId(textEl.id);
                   }}
@@ -1008,6 +1024,10 @@ export default function TacticalCanvas({
               return (
                 <Line
                   key={userId}
+                  x={el.x ?? 0}
+                  y={el.y ?? 0}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
                   points={el.points}
                   stroke={el.color}
                   strokeWidth={el.strokeWidth}
@@ -1022,6 +1042,10 @@ export default function TacticalCanvas({
               return (
                 <Line
                   key={userId}
+                  x={el.x ?? 0}
+                  y={el.y ?? 0}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
                   points={el.points}
                   stroke={el.color}
                   strokeWidth={el.strokeWidth}
@@ -1035,6 +1059,10 @@ export default function TacticalCanvas({
               return (
                 <Arrow
                   key={userId}
+                  x={el.x ?? 0}
+                  y={el.y ?? 0}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
                   points={el.points}
                   stroke={el.color}
                   fill={el.color}
@@ -1053,6 +1081,8 @@ export default function TacticalCanvas({
                   key={userId}
                   x={el.x}
                   y={el.y}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
                   radius={el.radius}
                   fill={el.color}
                   fillOpacity={0.35}
@@ -1064,7 +1094,13 @@ export default function TacticalCanvas({
             }
             if (el.type === 'ping') {
               return (
-                <Group key={userId} x={el.x} y={el.y}>
+                <Group
+                  key={userId}
+                  x={el.x}
+                  y={el.y}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
+                >
                   <Circle radius={16} stroke={el.color} strokeWidth={1.5} opacity={0.4} />
                   <Circle radius={10} stroke={el.color} strokeWidth={2} opacity={0.8} />
                   <Circle radius={5} fill={el.color} shadowColor={el.color} shadowBlur={10} />
@@ -1086,7 +1122,13 @@ export default function TacticalCanvas({
             }
             if (el.type === 'text') {
               return (
-                <Group key={userId} x={el.x} y={el.y}>
+                <Group
+                  key={userId}
+                  x={el.x}
+                  y={el.y}
+                  scaleX={el.scaleX ?? 1}
+                  scaleY={el.scaleY ?? 1}
+                >
                   <Text
                     text={el.text}
                     fontSize={el.fontSize || 16}

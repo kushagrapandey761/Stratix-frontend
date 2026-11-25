@@ -15,6 +15,10 @@ export interface BaseElement {
   color: string;
   strokeWidth: number;
   opacity?: number;
+  x?: number;
+  y?: number;
+  scaleX?: number;
+  scaleY?: number;
 }
 
 export interface DrawElement extends BaseElement {
