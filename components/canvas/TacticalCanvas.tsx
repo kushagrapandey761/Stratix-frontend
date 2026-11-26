@@ -7,6 +7,7 @@ import {
   Line,
   Arrow,
   Circle,
+  Image as KonvaImage,
   Text,
   Group,
   Transformer,
@@ -36,6 +37,7 @@ interface TacticalCanvasProps {
   maps: IValorantMap[];
   onSelectMap: (map: IValorantMap) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
+  onMapPointerMove?: (position: { x: number; y: number }) => void;
   initialElements?: CanvasElement[];
   roomId?: string;
 }
@@ -50,6 +52,27 @@ interface RemoteCursorData {
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 1000;
 
+function AgentPingImage({ src }: { src: string }) {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadedImage = new window.Image();
+    loadedImage.crossOrigin = 'anonymous';
+    loadedImage.onload = () => {
+      if (active) setImage(loadedImage);
+    };
+    loadedImage.src = src;
+
+    return () => {
+      active = false;
+      loadedImage.onload = null;
+    };
+  }, [src]);
+
+  return image ? <KonvaImage image={image} x={-13} y={-13} width={26} height={26} /> : null;
+}
+
 function shouldBroadcastLiveUpdate(lastEmittedAt: { current: number }) {
   const now = Date.now();
   if (now - lastEmittedAt.current <= 35) return false;
@@ -62,6 +85,7 @@ export default function TacticalCanvas({
   maps,
   onSelectMap,
   onElementsChange,
+  onMapPointerMove,
   initialElements,
   roomId,
 }: TacticalCanvasProps) {
@@ -536,14 +560,23 @@ export default function TacticalCanvas({
 
   // Pointer Move (Drawing update or Pan update + Cursor broadcast)
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    const mapPosition = getRelativePointerPosition();
+    if (
+      mapPosition.x >= 0 &&
+      mapPosition.x <= MAP_WIDTH &&
+      mapPosition.y >= 0 &&
+      mapPosition.y <= MAP_HEIGHT
+    ) {
+      onMapPointerMove?.(mapPosition);
+    }
+
     // Broadcast cursor position to room (throttled to ~35ms / ~28fps)
     if (roomId) {
       const now = Date.now();
       if (now - lastCursorEmit.current > 35) {
         lastCursorEmit.current = now;
-        const pointerPos = getRelativePointerPosition();
         const socket = getSocket();
-        socket.emit('cursor_move', { roomId, x: pointerPos.x, y: pointerPos.y });
+        socket.emit('cursor_move', { roomId, x: mapPosition.x, y: mapPosition.y });
       }
     }
 
@@ -962,15 +995,32 @@ export default function TacticalCanvas({
                     if (currentTool === 'select') setSelectedId(ping.id);
                   }}
                 >
-                  <Circle radius={16} stroke={ping.color} strokeWidth={1.5} opacity={0.4} />
-                  <Circle radius={10} stroke={ping.color} strokeWidth={2} opacity={0.8} />
-                  <Circle radius={5} fill={ping.color} shadowColor={ping.color} shadowBlur={10} />
+                  {ping.imageUrl ? (
+                    <>
+                      <Circle radius={15} fill="#10141D" />
+                      <Group
+                        clipFunc={(context) => {
+                          context.arc(0, 0, 13, 0, Math.PI * 2, false);
+                        }}
+                      >
+                        <AgentPingImage src={ping.imageUrl} />
+                      </Group>
+                      <Circle radius={15} stroke={ping.color} strokeWidth={2} />
+                      <Circle radius={18} stroke={ping.color} strokeWidth={1} opacity={0.45} />
+                    </>
+                  ) : (
+                    <>
+                      <Circle radius={16} stroke={ping.color} strokeWidth={1.5} opacity={0.4} />
+                      <Circle radius={10} stroke={ping.color} strokeWidth={2} opacity={0.8} />
+                      <Circle radius={5} fill={ping.color} shadowColor={ping.color} shadowBlur={10} />
+                    </>
+                  )}
 
                   {ping.label && (
                     <Text
                       text={ping.label}
                       x={14}
-                      y={-8}
+                      y={ping.imageUrl ? 14 : -8}
                       fontSize={11}
                       fontFamily="Space Grotesk, sans-serif"
                       fontStyle="bold"

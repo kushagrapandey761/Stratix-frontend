@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -19,13 +20,16 @@ import {
 } from 'lucide-react';
 import { getSocket, Room, RoomMember } from '../../../lib/socket';
 import { CallsignPrompt } from '@/components/room/callsign-prompt';
+import { AgentPicker } from '@/components/room/AgentPicker';
 import { RoomError } from '@/components/room/room-error';
 import { CanvasWrapper } from '@/components/canvas/CanvasWrapper';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { VoiceControls } from '@/components/room/VoiceControls';
 import { BrandLogo } from '@/components/ui/brand-logo';
 import { fetchCompetitiveMaps } from '@/lib/valorant-maps';
+import { fetchPlayableAgents } from '@/lib/valorant-agents';
 import type { IValorantMap } from '@/components/landing/supported-maps/IMapsResponse';
+import type { IValorantAgent } from '@/lib/valorant-agents';
 
 const CALLSIGN_UPDATED_EVENT = 'stratix_callsign_updated';
 
@@ -53,12 +57,31 @@ export default function RoomPage() {
   const [activityLogs, setActivityLogs] = useState<string[]>([]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [maps, setMaps] = useState<IValorantMap[]>([]);
+  const [agents, setAgents] = useState<IValorantAgent[]>([]);
+  const [agentLoadError, setAgentLoadError] = useState<string | null>(null);
+  const [agentSelectionError, setAgentSelectionError] = useState<string | null>(null);
+  const lastMapPointer = useRef<{ x: number; y: number } | null>(null);
   const userName = useSyncExternalStore(subscribeToCallsign, getSavedCallsign, () => null);
   const [callsignInput, setCallsignInput] = useState('');
   const [callsignError, setCallsignError] = useState('');
+  const roomRef = useRef(room);
+  const agentsRef = useRef(agents);
+
+  function addLog(msg: string) {
+    const time = new Date().toLocaleTimeString();
+    setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
+  }
 
   // Voice Chat Hook (WebRTC Mesh + VAD Audio Meter)
   const voice = useVoiceChat(roomId, socketId);
+
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  useEffect(() => {
+    agentsRef.current = agents;
+  }, [agents]);
 
   // Selected map resolution
   const savedMapId = room?.mapId?.toLowerCase();
@@ -70,6 +93,12 @@ export default function RoomPage() {
         map.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') ===
           savedMapId?.replace(/[^a-z0-9]/g, '')
     ) ?? maps[0];
+  const currentRoomMember = room?.members.find((member) => member.id === socketId);
+  const currentAgent = agents.find(
+    (agent) =>
+      agent.uuid === currentRoomMember?.agent ||
+      agent.displayName.toLowerCase() === currentRoomMember?.agent?.toLowerCase()
+  );
 
   useEffect(() => {
     let active = true;
@@ -81,6 +110,25 @@ export default function RoomPage() {
         if (active) {
           setError(
             fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant maps.'
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchPlayableAgents()
+      .then((loadedAgents) => {
+        if (active) setAgents(loadedAgents);
+      })
+      .catch((fetchError: unknown) => {
+        if (active) {
+          setAgentLoadError(
+            fetchError instanceof Error ? fetchError.message : 'Unable to load Valorant agents.'
           );
         }
       });
@@ -133,6 +181,30 @@ export default function RoomPage() {
       addLog(`[>] Map switched to: ${data.mapId.toUpperCase()}`);
     };
 
+    const onAgentSelected = (data: { userId: string; agentId: string | null }) => {
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              members: prev.members.map((member) =>
+                member.id === data.userId
+                  ? { ...member, agent: data.agentId || undefined }
+                  : member
+              ),
+            }
+          : prev
+      );
+      if (data.userId !== socket.id) {
+        const agent = agentsRef.current.find((item) => item.uuid === data.agentId);
+        const member = roomRef.current?.members.find((item) => item.id === data.userId);
+        addLog(
+          data.agentId
+            ? `[>] ${member?.name || 'An operator'} selected ${agent?.displayName || 'an agent'}.`
+            : `[>] ${member?.name || 'An operator'} cleared their agent selection.`
+        );
+      }
+    };
+
     const onHostChanged = (data: { newHostId: string }) => {
       setRoom((prev) =>
         prev
@@ -170,6 +242,7 @@ export default function RoomPage() {
     socket.on('disconnect', onDisconnect);
     socket.on('user_joined', onUserJoined);
     socket.on('select_map', onMapSelected);
+    socket.on('select_agent', onAgentSelected);
     socket.on('user_left', onUserLeft);
     socket.on('error_message', onErrorMessage);
     socket.on('host_changed', onHostChanged);
@@ -185,6 +258,7 @@ export default function RoomPage() {
       socket.off('disconnect', onDisconnect);
       socket.off('user_joined', onUserJoined);
       socket.off('select_map', onMapSelected);
+      socket.off('select_agent', onAgentSelected);
       socket.off('user_left', onUserLeft);
       socket.off('error_message', onErrorMessage);
       socket.off('host_changed', onHostChanged);
@@ -212,6 +286,41 @@ export default function RoomPage() {
     addLog(`[>] Map switched to: ${map.displayName.toUpperCase()}`);
   };
 
+  const handleSelectAgent = (agentId: string) => {
+    if (!isConnected) return;
+
+    const selectedAgentId = agentId || null;
+    const selectedAgent = agents.find((agent) => agent.uuid === selectedAgentId);
+    const position = lastMapPointer.current ?? { x: 500, y: 500 };
+    setAgentSelectionError(null);
+    const socket = getSocket();
+    const timeoutId = window.setTimeout(() => {
+      setAgentSelectionError('The room server did not confirm your selection. Please try again.');
+    }, 5000);
+
+    socket.emit(
+      'select_agent',
+      {
+        roomId,
+        agentId: selectedAgentId,
+        agentIcon: selectedAgent?.displayIcon ?? null,
+        x: position.x,
+        y: position.y,
+      },
+      (response) => {
+      window.clearTimeout(timeoutId);
+      if (!response.success) {
+        setAgentSelectionError(response.error || 'Unable to select that agent.');
+        return;
+      }
+
+      addLog(
+        `[>] You ${selectedAgent ? `selected ${selectedAgent.displayName}` : 'cleared your agent selection'}.`
+      );
+      }
+    );
+  };
+
   const handleCallsignSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const callsign = callsignInput.trim();
@@ -224,11 +333,6 @@ export default function RoomPage() {
     window.dispatchEvent(new Event(CALLSIGN_UPDATED_EVENT));
     setCallsignError('');
   };
-
-  function addLog(msg: string) {
-    const time = new Date().toLocaleTimeString();
-    setActivityLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 20)]);
-  }
 
   if (error) {
     return <RoomError message={error} />;
@@ -347,6 +451,9 @@ export default function RoomPage() {
               onSelectMap={handleSelectMap}
               initialElements={room?.elements}
               roomId={roomId}
+              onMapPointerMove={(position) => {
+                lastMapPointer.current = position;
+              }}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-xs font-tactical text-[#9298A5]">
@@ -408,6 +515,32 @@ export default function RoomPage() {
             className="flex min-h-0 flex-1 flex-col"
             hidden={isSidebarCollapsed}
           >
+            {room?.members.some((member) => member.id === socketId) && (
+              <section className="border-b border-[#292E3A] bg-[#10141D] p-3">
+                <div className="mb-1">
+                  <h2 className="text-[10px] font-tactical font-bold uppercase tracking-wider text-white">
+                    Choose your agent
+                  </h2>
+                  <p className="mt-0.5 text-[9px] text-[#9298A5]">
+                    Your pick is shared with the room.
+                  </p>
+                </div>
+                <AgentPicker
+                  agents={agents}
+                  selectedAgent={currentAgent}
+                  unavailableAgentIds={
+                    room?.members.flatMap((member) =>
+                      member.id !== socketId && member.agent ? [member.agent] : []
+                    ) ?? []
+                  }
+                  isConnected={isConnected}
+                  error={agentLoadError}
+                  selectionError={agentSelectionError}
+                  onSelect={handleSelectAgent}
+                />
+              </section>
+            )}
+
               {/* Member List */}
               <div className="p-3 space-y-2 overflow-y-auto flex-1">
             {room?.members.map((member) => {
@@ -415,16 +548,21 @@ export default function RoomPage() {
               const isYou = member.id === socketId;
               const isSpeaking = isYou ? voice.isSpeakingLocally : voice.voiceStatuses[member.id]?.isSpeaking;
               const isMuted = isYou ? voice.isMuted : voice.voiceStatuses[member.id]?.isMuted;
+              const selectedAgent = agents.find(
+                (agent) =>
+                  agent.uuid === member.agent ||
+                  agent.displayName.toLowerCase() === member.agent?.toLowerCase()
+              );
 
               return (
-                <div
-                  key={member.id}
-                  className={`p-2.5 rounded-lg bg-[#191D27] border transition-all flex items-center justify-between ${
-                    isSpeaking
-                      ? 'border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]'
-                      : 'border-[#292E3A] hover:border-[#3a3f4d]'
-                  }`}
-                >
+                <React.Fragment key={member.id}>
+                  <div
+                    className={`p-2.5 rounded-lg bg-[#191D27] border transition-all flex items-center justify-between ${
+                      isSpeaking
+                        ? 'border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]'
+                        : 'border-[#292E3A] hover:border-[#3a3f4d]'
+                    }`}
+                  >
                   <div className="flex items-center gap-2.5">
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center font-display font-black text-xs text-white shadow-sm flex-shrink-0 relative transition-transform ${
@@ -432,7 +570,17 @@ export default function RoomPage() {
                       }`}
                       style={{ backgroundColor: member.color }}
                     >
-                      {member.name.charAt(0).toUpperCase()}
+                      {selectedAgent?.displayIcon ? (
+                        <Image
+                          src={selectedAgent.displayIcon}
+                          alt={selectedAgent.displayName}
+                          width={28}
+                          height={28}
+                          className="h-full w-full rounded-lg object-cover"
+                        />
+                      ) : (
+                        member.name.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -469,7 +617,8 @@ export default function RoomPage() {
                     className="w-2 h-2 rounded-full flex-shrink-0"
                     style={{ backgroundColor: member.color }}
                   />
-                </div>
+                  </div>
+                </React.Fragment>
               );
             })}
               </div>

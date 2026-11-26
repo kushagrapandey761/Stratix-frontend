@@ -26,6 +26,7 @@ interface CanvasWrapperProps {
   maps: IValorantMap[];
   onSelectMap: (map: IValorantMap) => void;
   onElementsChange?: (elements: CanvasElement[]) => void;
+  onMapPointerMove?: (position: { x: number; y: number }) => void;
   initialElements?: CanvasElement[];
   roomId?: string;
 }

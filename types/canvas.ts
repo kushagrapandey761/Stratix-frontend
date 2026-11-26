@@ -50,6 +50,8 @@ export interface PingElement extends BaseElement {
   x: number;
   y: number;
   label?: string;
+  imageUrl?: string;
+  ownerId?: string;
   pingType?: 'danger' | 'move' | 'utility' | 'warning' | 'info';
 }
 

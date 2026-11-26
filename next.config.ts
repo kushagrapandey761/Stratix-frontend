@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
         pathname: "/maps/**",
         search: "",
       },
+      {
+        protocol: "https",
+        hostname: "media.valorant-api.com",
+        pathname: "/agents/**",
+        search: "",
+      },
     ],
   },
   turbopack: {

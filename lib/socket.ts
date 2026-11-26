@@ -51,6 +51,16 @@ export interface ClientToServerEvents {
 
   leave_room: (data: { roomId: string }) => void;
   select_map: (data: { roomId: string; mapId: string }) => void;
+  select_agent: (
+    data: {
+      roomId: string;
+      agentId: string | null;
+      agentIcon: string | null;
+      x: number;
+      y: number;
+    },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
   cursor_move: (data: { roomId: string; x: number; y: number }) => void;
   cursor_leave: (data: { roomId: string }) => void;
 
@@ -72,6 +82,7 @@ export interface ServerToClientEvents {
   user_left: (data: { memberId: string; memberName: string; membersCount: number }) => void;
   error_message: (message: string) => void;
   select_map: (data: { mapId: string }) => void;
+  select_agent: (data: { userId: string; agentId: string | null }) => void;
   host_changed: (data: { newHostId: string }) => void;
   cursor_move: (data: { userId: string; userName: string; color: string; x: number; y: number }) => void;
   cursor_leave: (data: { userId: string }) => void;
@@ -90,9 +101,7 @@ export interface ServerToClientEvents {
 
 export type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : undefined);
+const BACKEND_URL = (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : process.env.NEXT_PUBLIC_BACKEND_URL);
 
 let socket: TypedSocket | null = null;
 
