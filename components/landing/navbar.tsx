@@ -22,6 +22,12 @@ export function Navbar({ onCreateClick, onJoinClick }: { onCreateClick: () => vo
               {item}
             </a>
           ))}
+          <Link
+            href="/dashboard"
+            className="text-sm font-display font-medium text-[#9298A5] hover:text-white transition-colors"
+          >
+            Public Rooms
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">

@@ -28,7 +28,21 @@ export interface Room {
   elements?: CanvasElement[];
 }
 
+export interface PublicRoomSummary {
+  id: string;
+  name: string;
+  description?: string;
+  mapId?: string;
+  maxParticipants: number;
+  createdAt: number;
+  memberCount: number;
+}
+
 export interface ClientToServerEvents {
+  get_public_rooms: (
+    callback: (response: { rooms: PublicRoomSummary[] }) => void
+  ) => void;
+
   create_room: (
     data: {
       name: string;
@@ -77,6 +91,7 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  public_rooms_updated: (rooms: PublicRoomSummary[]) => void;
   room_joined: (room: Room) => void;
   user_joined: (data: { member: RoomMember; membersCount: number }) => void;
   user_left: (data: { memberId: string; memberName: string; membersCount: number }) => void;
