@@ -13,10 +13,10 @@ export function Navbar({ onCreateClick, onJoinClick }: { onCreateClick: () => vo
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          {['Features', 'How It Works', 'Maps'].map((item) => (
+          {["Features", "How It Works", "Maps"].map((item) => (
             <a
               key={item}
-              href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
+              href={`#${item.toLowerCase().replace(/\s+/g, "-")}`}
               className="text-sm font-display font-medium text-[#9298A5] hover:text-white transition-colors"
             >
               {item}
@@ -26,20 +26,20 @@ export function Navbar({ onCreateClick, onJoinClick }: { onCreateClick: () => vo
             href="/dashboard"
             className="text-sm font-display font-medium text-[#9298A5] hover:text-white transition-colors"
           >
-            Public Rooms
+            Dashboard
           </Link>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={onJoinClick}
-            className="hidden sm:block text-sm font-display font-semibold text-[#9298A5] hover:text-white transition-colors px-3 py-1.5"
+            className="hidden sm:block text-sm font-display font-semibold text-[#9298A5] hover:text-white transition-colors px-3 py-1.5 cursor-pointer"
           >
             Join Room
           </button>
           <button
             onClick={onCreateClick}
-            className="flex items-center gap-1.5 text-sm font-display font-bold text-white bg-[#FF4655] hover:bg-[#e03545] transition-colors px-4 py-2 rounded"
+            className="flex items-center gap-1.5 text-sm font-display font-bold text-white bg-[#FF4655] hover:bg-[#e03545] transition-colors px-4 py-2 rounded cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             Create Room

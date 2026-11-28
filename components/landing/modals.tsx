@@ -84,23 +84,29 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={handleClose} />
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={handleClose}
+      />
       <div className="relative w-full max-w-md bg-[#141720] border border-[#292E3A] rounded-xl shadow-2xl animate-slide-up">
         <div className="flex items-center justify-between p-5 border-b border-[#292E3A]">
           <div>
             <div className="text-[10px] font-tactical text-[#FF4655] tracking-widest uppercase mb-0.5">
-              {step === 'form' ? 'NEW WAR ROOM' : 'ROOM ESTABLISHED'}
+              {step === "form" ? "NEW WAR ROOM" : "ROOM ESTABLISHED"}
             </div>
             <h2 className="text-lg font-display font-black text-white uppercase tracking-wider">
-              {step === 'form' ? 'Create Room' : 'Share & Deploy'}
+              {step === "form" ? "Create Room" : "Share & Deploy"}
             </h2>
           </div>
-          <button onClick={handleClose} className="text-[#9298A5] hover:text-white transition-colors p-1">
+          <button
+            onClick={handleClose}
+            className="text-[#9298A5] hover:text-white transition-colors p-1 cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {step === 'form' ? (
+        {step === "form" ? (
           <div className="p-5 space-y-4">
             {error && (
               <div className="p-3 bg-[#FF4655]/10 border border-[#FF4655]/30 rounded-lg text-xs font-tactical text-[#FF4655]">
@@ -151,18 +157,22 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
                 Visibility
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {(['private', 'public'] as const).map((v) => (
+                {(["private", "public"] as const).map((v) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setVisibility(v)}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-display font-semibold transition-all ${
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-display font-semibold transition-all cursor-pointer ${
                       visibility === v
-                        ? 'border-[#FF4655] bg-[#FF4655]/10 text-white'
-                        : 'border-[#292E3A] text-[#9298A5] hover:border-[#9298A5]'
+                        ? "border-[#FF4655] bg-[#FF4655]/10 text-white"
+                        : "border-[#292E3A] text-[#9298A5] hover:border-[#9298A5]"
                     }`}
                   >
-                    {v === 'private' ? <Lock className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+                    {v === "private" ? (
+                      <Lock className="w-3.5 h-3.5" />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5" />
+                    )}
                     {v.charAt(0).toUpperCase() + v.slice(1)}
                   </button>
                 ))}
@@ -190,7 +200,7 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
             <button
               onClick={handleCreate}
               disabled={isLoading || !name.trim()}
-              className="w-full bg-[#FF4655] hover:bg-[#e03545] disabled:opacity-40 disabled:cursor-not-allowed text-white font-display font-bold text-sm py-3 rounded-lg transition-colors mt-2 flex items-center justify-center gap-2"
+              className="w-full bg-[#FF4655] hover:bg-[#e03545] disabled:opacity-40 disabled:cursor-not-allowed text-white font-display font-bold text-sm py-3 rounded-lg transition-colors mt-2 flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -198,7 +208,7 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
                   INITIALIZING ROOM...
                 </>
               ) : (
-                'INITIALIZE WAR ROOM'
+                "INITIALIZE WAR ROOM"
               )}
             </button>
           </div>
@@ -229,8 +239,8 @@ export function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () 
                   onClick={handleCopy}
                   className={`px-3 py-2 rounded-lg text-xs font-display font-bold transition-all flex items-center gap-1.5 ${
                     copied
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                      : 'bg-[#FF4655]/10 text-[#FF4655] border border-[#FF4655]/30 hover:bg-[#FF4655]/20'
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : "bg-[#FF4655]/10 text-[#FF4655] border border-[#FF4655]/30 hover:bg-[#FF4655]/20"
                   }`}
                 >
                   {copied ? (
@@ -299,7 +309,10 @@ export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative w-full max-w-sm bg-[#141720] border border-[#292E3A] rounded-xl shadow-2xl animate-slide-up">
         <div className="flex items-center justify-between p-5 border-b border-[#292E3A]">
           <div>
@@ -310,7 +323,10 @@ export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () =>
               Enter Room
             </h2>
           </div>
-          <button onClick={onClose} className="text-[#9298A5] hover:text-white transition-colors p-1">
+          <button
+            onClick={onClose}
+            className="text-[#9298A5] hover:text-white transition-colors p-1 cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -337,19 +353,25 @@ export function JoinRoomModal({ open, onClose }: { open: boolean; onClose: () =>
               value={code}
               onChange={(e) => {
                 setCode(e.target.value);
-                setError('');
+                setError("");
               }}
               placeholder="STRAT-XXXX or paste link"
               className={`w-full bg-[#0B0D12] border rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#4a5160] focus:outline-none transition-colors font-tactical tracking-widest ${
-                error ? 'border-[#FF4655]' : 'border-[#292E3A] focus:border-[#A855F7]'
+                error
+                  ? "border-[#FF4655]"
+                  : "border-[#292E3A] focus:border-[#A855F7]"
               }`}
             />
-            {error && <p className="text-[11px] text-[#FF4655] mt-1.5 font-tactical">{error}</p>}
+            {error && (
+              <p className="text-[11px] text-[#FF4655] mt-1.5 font-tactical">
+                {error}
+              </p>
+            )}
           </div>
 
           <button
             onClick={handleJoin}
-            className="w-full bg-[#A855F7] hover:bg-[#9333ea] text-white font-display font-bold text-sm py-3 rounded-lg transition-colors"
+            className="w-full bg-[#A855F7] hover:bg-[#9333ea] text-white font-display font-bold text-sm py-3 rounded-lg transition-colors cursor-pointer"
           >
             CONNECT TO ROOM
           </button>

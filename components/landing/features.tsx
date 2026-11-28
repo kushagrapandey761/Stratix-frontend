@@ -24,7 +24,7 @@ const FEATURES = [
   {
     icon: Shield,
     title: 'Save Strategies',
-    desc: 'Store unlimited strategies per map. Revisit and iterate on your playbook between matches.',
+    desc: 'This feature is in development and will be available later.',
     color: '#22c55e',
   },
   {
